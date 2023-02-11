@@ -228,7 +228,7 @@ def interact(env,
     if animate_:
         return animate(imgs)
     else:
-        return None
+        return obs
 
 
 if __name__ == "__main__":
