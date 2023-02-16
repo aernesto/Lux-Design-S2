@@ -11,82 +11,6 @@ from collections import OrderedDict
 import numpy as np
 from luxai_s2.utils import animate, my_turn_to_place_factory
 
-#
-#  def obs_to_game_state(step, env_cfg: EnvConfig, obs):
-#  units = dict()
-#  for agent in obs["units"]:
-#  units[agent] = dict()
-#  for unit_id in obs["units"][agent]:
-#  unit_data = obs["units"][agent][unit_id]
-#  cargo = UnitCargo(**unit_data["cargo"])
-#  unit = Unit(**unit_data,
-#  unit_cfg=env_cfg.ROBOTS[unit_data["unit_type"]],
-#  env_cfg=env_cfg)
-#  unit.cargo = cargo
-#  units[agent][unit_id] = unit
-#
-#  factory_occupancy_map = np.ones_like(obs["board"]["rubble"],
-#  dtype=int) * -1
-#  factories = dict()
-#  for agent in obs["factories"]:
-#  factories[agent] = dict()
-#  for unit_id in obs["factories"][agent]:
-#  f_data = obs["factories"][agent][unit_id]
-#  cargo = UnitCargo(**f_data["cargo"])
-#  factory = Factory(**f_data, env_cfg=env_cfg)
-#  factory.cargo = cargo
-#  factories[agent][unit_id] = factory
-#  factory_occupancy_map[factory.pos_slice] = factory.strain_id
-#  teams = dict()
-#  for agent in obs["teams"]:
-#  team_data = {k: obs['teams'][agent][k] for k in ['team_id', 'faction']}
-#
-#  faction = FactionTypes[team_data["faction"]]
-#  teams[agent] = Team(**team_data, agent=agent)
-#
-#
-#  NASTY                         GameMap(rubble=obs["board"]["rubble"],
-#  ice=obs["board"]["ice"],
-#  ore=obs["board"]["ore"],
-#  lichen=obs["board"]["lichen"],
-#  lichen_strains=obs["board"]["lichen_strains"],
-#  factory_occupancy_map=factory_occupancy_map,
-#  factories_per_team=obs["board"]["factories_per_team"],
-#  valid_spawns_mask=obs["board"]["valid_spawns_mask"]),
-#  return GameState(env_cfg=env_cfg,
-#  env_steps=step,
-#  board=Board(env_cfg=env_cfg, existing_map=map_),
-#  units=units,
-#  factories=factories,
-#  teams=teams)
-#
-#
-#  @dataclass
-#  class GameState:
-#  """
-#  A GameState object at step env_steps. Copied from luxai_s2/state/state.py
-#  """
-#  env_steps: int
-#  env_cfg: dict
-#  board: Board
-#  units: Dict[str, Dict[str, Unit]] = field(default_factory=dict)
-#  factories: Dict[str, Dict[str, Factory]] = field(default_factory=dict)
-#  teams: Dict[str, Team] = field(default_factory=dict)
-#
-#  @property
-#  def real_env_steps(self):
-#  """
-#  the actual env step in the environment, which subtracts the time spent bidding and placing factories
-#  """
-#  if self.env_cfg.BIDDING_SYSTEM:
-#  return self.env_steps - (self.board.factories_per_team * 2 + 1)
-#  else:
-#  return self.env_steps
-#
-#  def is_day(self):
-#  return self.real_env_steps % self.env_cfg.CYCLE_LENGTH < self.env_cfg.DAY_LENGTH
-#
-
 
 def reset_w_custom_board(environment, seed, custom_board):
     environment.agents = environment.possible_agents[:]
@@ -151,24 +75,6 @@ class IdleAgent:
     def act(self, step: int, obs, remainingOverageTime: int = 60):
         actions = dict()
         return actions
-
-
-#  def animate(imgs, _return=True):
-#
-#  video_name = ''.join(
-#  random.choice(string.ascii_letters) for i in range(18)) + '.webm'
-#  height, width, layers = imgs[0].shape
-#  fourcc = cv2.VideoWriter_fourcc(*'VP90')
-#  video = cv2.VideoWriter(video_name, fourcc, 10, (width, height))
-#
-#  for img in imgs:
-#  img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-#  video.write(img)
-#  video.release()
-#  if _return:
-#  from IPython.display import Video
-#  return Video(video_name)
-#
 
 
 def interact(env,
