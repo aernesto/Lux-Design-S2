@@ -22,3 +22,5 @@ replay.html
 /kits/java/.idea/
 /kits/java/luxai2022.iml
 /kits/java/localrun/*.jar
+*webm
+data
