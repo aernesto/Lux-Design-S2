@@ -80,9 +80,9 @@ class IdleAgent:
 def interact(env,
              agents,
              steps,
-             animate_: bool = True,
-             break_at_first_action=False,
-             debug=False,
+             animate_: str = '',
+             break_at_first_action: bool = False,
+             debug: bool = False,
              custom_board: Optional[Board] = None):
     # reset our env
     if custom_board is None:
@@ -108,7 +108,7 @@ def interact(env,
         obs, rewards, dones, infos = env.step(actions)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
-            logging.info(f'{step=}')
+            logging.debug(f'{step=}')
     done = False
 
     inner_counter = 0
@@ -120,7 +120,7 @@ def interact(env,
             o = obs[player]
             if debug:
                 a = agents[player].debug_act(step, o)
-                logging.info(f"{step=}  {inner_counter=}")
+                logging.debug(f"{step=}  {inner_counter=}")
             else:
                 a = agents[player].act(step, o)
             actions[player] = a
@@ -132,7 +132,8 @@ def interact(env,
         if break_at_first_action and inner_counter == 2:
             break
     if animate_:
-        return animate(imgs)
+        logging.info(f'writing {animate_}')
+        return animate(imgs, filename=animate_)
     else:
         return obs
 
