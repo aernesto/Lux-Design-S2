@@ -24,5 +24,6 @@ replay.html
 /kits/java/localrun/*.jar
 *webm
 data
-codigo/src/main.log
-codigo/src/stdout.log
+*tar.gz
+*html
+*log
