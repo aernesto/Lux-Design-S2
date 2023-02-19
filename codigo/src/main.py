@@ -7,7 +7,7 @@ from argparse import Namespace
 from agents_experiments import ControlledAgent
 from lux.config import EnvConfig
 from lux.kit import process_obs, process_action
-logging.basicConfig(filename='main.log', encoding='utf-8', level=logging.DEBUG)
+#  logging.basicConfig(filename='main_37.log', level=logging.DEBUG)
 agent_dict = dict(
 )  # store potentially multiple dictionaries as kaggle imports code directly
 agent_prev_obs = dict()
@@ -68,7 +68,9 @@ if __name__ == "__main__":
             configurations = obs["info"]["env_cfg"]
         i += 1
         actions = agent_fn(observation, dict(env_cfg=configurations))
-        logging.debug(f'{i=} {obs["player"]=}')
-        logging.debug(f'{i=} inputs=<START>{inputs}<STOP>')
-        logging.debug(f'{i=} actions=<START>{actions}<STOP>\n')
+        logging.debug('{i} {op}'.format(i=i, op=obs["player"]))
+        logging.debug('{i} inputs=<START>{inputs}<STOP>'.format(i=i,
+                                                                inputs=inputs))
+        logging.debug('{i} actions=<START>{actions}<STOP>\n'.format(
+            i=i, actions=actions))
         print(json.dumps(actions))

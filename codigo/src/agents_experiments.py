@@ -40,7 +40,8 @@ class ControlledAgent:
 
     def monitor(self, step, obs):
         o = CenteredObservation(obs, self.player)
-        assert step == len(self.stats) + 1, f"{step=}  {len(self.stats)=}"
+        assert step == len(self.stats) + 1, "{step}  {len_stats}".format(
+            step=step, len_stat=len(self.stats))
         c = o.total_factories_cargo
         c.update({
             'number': len(o.my_factories),
@@ -87,7 +88,7 @@ class ControlledAgent:
             try:
                 plant_obs = FactoryCenteredObservation(obs, factory_id)
             except AttributeError:
-                logging.debug(f"{fac=}")
+                logging.debug("{fac}".format(fac=fac))
                 raise
             plant_enacter = PlantEnacter(plant_obs, self.env_cfg)
             if num_heavy_to_build:
@@ -107,10 +108,11 @@ class ControlledAgent:
         observation = CenteredObservation(obs, self.player)
 
         # who am I?
-        logger.debug(f'I am {observation.myself}')
+        logger.debug('I am {obsf}'.format(obsf=observation.myself))
 
         # what turn is it?
-        logger.debug(f'{step=}  {remainingOverageTime=}')
+        logger.debug('{step}  {remainingOverageTime}'.format(
+            step=step, remainingOverageTime=remainingOverageTime))
 
         self.calls_to_act += 1
         actions = dict()
@@ -125,53 +127,54 @@ class ControlledAgent:
         opp_team_ = observation.opp_factories
         try:
             my_factories = count_and_locate_factories(myteam_)
-            logger.debug(f'{my_factories=}')
+            logger.debug('{my_factories}'.format(my_factories=my_factories))
         except KeyError:
             logger.debug('no factories found in controlled agent\'s team')
 
         try:
             opponents_factories = count_and_locate_factories(opp_team_)
-            logger.debug(f'{opponents_factories=}')
+            logger.debug('{opponents_factories}'.format(
+                opponents_factories=opponents_factories))
         except KeyError:
             logger.debug('no factories found in opponent agent\'s team')
 
         # where are ice and ore?
         logger.debug('where are ice and ore?')
-        logger.debug(
-            f'{observation.ice_map.shape=}  {observation.ice_map.dtype=}  {observation.ice_map.sum()=}'
-        )
-        logger.debug(
-            f'{observation.ore_map.shape=}  {observation.ore_map.dtype=}  {observation.ore_map.sum()=}'
-        )
+        logger.debug('{obs_shape}  {obs_dtype}  {obs_sum}'.format(
+            obs_shape=observation.ice_map.shape,
+            obs_dtype=observation.ice_map.dtype,
+            obs_sum=observation.ice_map.sum()))
+        logger.debug('{obs_shape}  {obs_dtype}  {obs_sum}'.format(
+            obs_shape=observation.ore_map.shape,
+            obs_dtype=observation.ore_map.dtype,
+            obs_sum=observation.ore_map.sum()))
 
         factories = obs['factories'][self.player]
         self.factories = factories
 
         for unit_id, factory in factories.items():
-            if factory['power'] >= self.env_cfg.ROBOTS["HEAVY"].POWER_COST and \
-                    factory['cargo']['metal'] >= self.env_cfg.ROBOTS["HEAVY"].METAL_COST:
+            if factory['power'] >= self.env_cfg.ROBOTS[
+                    "HEAVY"].POWER_COST and factory['cargo'][
+                        'metal'] >= self.env_cfg.ROBOTS["HEAVY"].METAL_COST:
                 try:
                     actions[unit_id] = 1  # build heavy
                 except AttributeError:
                     print(obs)
                     raise
 
-
-#         logging.debug(f'max queue size={self.env_cfg.UNIT_ACTION_QUEUE_SIZE}')
-
         for unit_id in observation.my_units.keys():
             robot_obs = RobotCenteredObservation(obs, unit_id)
             robot = Enacter(robot_obs, self.env_cfg)
 
-            logging.debug(f'Hi, I am robot {robot_obs.myself}')
+            logging.debug('Hi, I am robot {m}'.format(m=robot_obs.myself))
             if not robot_obs.queue:
                 actions[unit_id] = [robot.move_right(finite=5)]
-            logging.debug(f'{robot_obs.state=}')
+            logging.debug('{robot_obs}'.format(robot_obs=robot_obs.state))
 
         self.actions = actions
 
         # what were my returned actions?
-        logger.debug(f'{actions=}')
+        logger.debug('{actions}'.format(actions=actions))
         return actions
 
 
@@ -228,10 +231,8 @@ class IdleAgent:
         if factories_to_place > 0 and my_turn_to_place:
             potential_spawns = np.array(
                 list(zip(*np.where(obs["board"]["valid_spawns_mask"] == 1))))
-            #             logging.info(f'IdleAgent {potential_spawns.shape=}')
             selected_location_ix = -1
             spawn_loc = potential_spawns[selected_location_ix]
-            #             logging.info(f'IdleAgent {spawn_loc=}')
             return dict(spawn=spawn_loc, metal=150, water=150)
         return dict()
 
@@ -271,7 +272,7 @@ def interact(env,
         obs, rewards, dones, infos = env.step(actions)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
-            logging.debug(f'{step=}')
+            logging.debug('{step}'.format(step=step))
     done = False
 
     inner_counter = 0
@@ -283,7 +284,8 @@ def interact(env,
             o = obs[player]
             if debug:
                 a = agents[player].debug_act(step, o)
-                logging.debug(f"{step=}  {inner_counter=}")
+                logging.debug("{step}  {inner_counter}".format(
+                    step=step, inner_counter=inner_counter))
             else:
                 a = agents[player].act(step, o)
             actions[player] = a
@@ -295,7 +297,7 @@ def interact(env,
         if break_at_first_action and inner_counter == 2:
             break
     if animate_:
-        logging.info(f'writing {animate_}')
+        logging.info('writing {animate_}'.format(animate_=animate_))
         return animate(imgs, filename=animate_)
     else:
         return obs

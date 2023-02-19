@@ -91,9 +91,10 @@ class RobotCenteredObservation(CenteredObservation):
             for player_name, unit_dict in self.dict_obj['units'].items():
                 if uid in unit_dict.keys():
                     return player_name
-            raise ValueError(f"unit with ID {uid} not found in obs_dict")
+            raise ValueError(
+                "unit with ID {uid} not found in obs_dict".format(uid=uid))
         except TypeError:
-            logging.debug(f'{type(self)=}    {dir(self)=}')
+            logging.debug('{s}  {d}'.format(s=type(self), d=dir(self)))
             raise
 
     def _get_type(self):
@@ -153,9 +154,10 @@ class FactoryCenteredObservation(CenteredObservation):
             for player_name, unit_dict in self.dict_obj['factories'].items():
                 if uid in unit_dict.keys():
                     return player_name
-            raise ValueError(f"unit with ID {uid} not found in obs_dict")
+            raise ValueError(
+                "unit with ID {uid} not found in obs_dict".format(uid=uid))
         except TypeError:
-            logging.debug(f'{type(self)=}    {dir(self)=}')
+            logging.debug('{s}  {d}'.format(s=type(self), d=dir(self)))
             raise
 
     @property
