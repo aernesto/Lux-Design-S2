@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from luxai_s2.team import FactionTypes, Team
 from luxai_s2.factory import Factory
 from luxai_s2.state import State
-from luxai_s2.env import EnvConfig, Board
+from luxai_s2.env import EnvConfig, Board, LuxAI_S2
 from typing import Dict, Optional
 from luxai_s2.unit import Unit
 from collections import OrderedDict
@@ -23,6 +23,7 @@ class ControlledAgent:
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
+        self.max_allowed_factories = None  # gets set to right value in early_setup method
 
     @property
     def heavy_price(self):
@@ -44,7 +45,8 @@ class ControlledAgent:
             step=step, len_stat=len(self.stats))
         c = o.total_factories_cargo
         c.update({
-            'number': len(o.my_factories),
+            'max_number_allowed': self.max_allowed_factories,
+            'number_existing': len(o.my_factories),
             'power': np.sum(o.factories_ranked_by_power['power']),
         })
         self.stats.append({'factories_total': c})
@@ -53,13 +55,13 @@ class ControlledAgent:
         if step == 0:
             return dict(faction="AlphaStrike", bid=0)
         else:
-            self.monitor(step, obs)
             myteam = obs['teams'][self.player]
+            factories_to_place = myteam['factories_to_place']
+            if self.max_allowed_factories is None:
+                self.max_allowed_factories = factories_to_place
+            self.monitor(step, obs)
             water_left = myteam['water']
             metal_left = myteam['metal']
-
-            # how many factories you have left to place
-            factories_to_place = myteam['factories_to_place']
 
             # whether it is your turn to place a factory
             my_turn_to_place = my_turn_to_place_factory(
@@ -178,7 +180,8 @@ class ControlledAgent:
         return actions
 
 
-def reset_w_custom_board(environment, seed, custom_board):
+def reset_w_custom_board(environment: LuxAI_S2, seed: int,
+                         custom_board: Board):
     environment.agents = environment.possible_agents[:]
     environment.env_steps = 0
     if seed is not None:
