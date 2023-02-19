@@ -10,6 +10,169 @@ from luxai_s2.unit import Unit
 from collections import OrderedDict
 import numpy as np
 from luxai_s2.utils import animate, my_turn_to_place_factory
+from obs import (CenteredObservation, RobotCenteredObservation,
+                 FactoryCenteredObservation)
+from robots import Enacter
+from plants import PlantEnacter
+
+
+class ControlledAgent:
+    stats = []
+
+    def __init__(self, player: str, env_cfg: EnvConfig) -> None:
+        self.player = player
+        self.opp_player = "player_1" if self.player == "player_0" else "player_0"
+        self.env_cfg: EnvConfig = env_cfg
+
+    @property
+    def heavy_price(self):
+        return {
+            'metal': self.env_cfg.ROBOTS['HEAVY'].METAL_COST,
+            'power': self.env_cfg.ROBOTS['HEAVY'].POWER_COST
+        }
+
+    @property
+    def light_price(self):
+        return {
+            'metal': self.env_cfg.ROBOTS['LIGHT'].METAL_COST,
+            'power': self.env_cfg.ROBOTS['LIGHT'].POWER_COST
+        }
+
+    def monitor(self, step, obs):
+        o = CenteredObservation(obs, self.player)
+        assert step == len(self.stats) + 1, f"{step=}  {len(self.stats)=}"
+        c = o.total_factories_cargo
+        c.update({
+            'number': len(o.my_factories),
+            'power': np.sum(o.factories_ranked_by_power['power']),
+        })
+        self.stats.append({'factories_total': c})
+
+    def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
+        if step == 0:
+            return dict(faction="AlphaStrike", bid=0)
+        else:
+            self.monitor(step, obs)
+            myteam = obs['teams'][self.player]
+            water_left = myteam['water']
+            metal_left = myteam['metal']
+
+            # how many factories you have left to place
+            factories_to_place = myteam['factories_to_place']
+
+            # whether it is your turn to place a factory
+            my_turn_to_place = my_turn_to_place_factory(
+                myteam['place_first'], step)
+
+            if factories_to_place > 0 and my_turn_to_place:
+                inner_list = list(
+                    zip(*np.where(obs["board"]["valid_spawns_mask"] == 1)))
+                potential_spawns = np.array(inner_list)
+                selected_location_ix = 0
+                spawn_loc = potential_spawns[selected_location_ix]
+                return dict(spawn=spawn_loc, metal=150, water=150)
+            return dict()
+
+    def act(self, step: int, obs, remainingOverageTime: int = 60):
+        self.monitor(step, obs)
+        observation = CenteredObservation(obs, self.player)
+        actions = dict()
+
+        total_heavy_quota = observation.ice_map.sum(
+        ) + observation.ore_map.sum()
+        existing_heavies = len(observation.my_units)
+        num_heavy_to_build = total_heavy_quota - existing_heavies
+        for fac in observation.factories_ranked_by_power:
+            factory_id = fac['factory_id']
+            try:
+                plant_obs = FactoryCenteredObservation(obs, factory_id)
+            except AttributeError:
+                logging.debug(f"{fac=}")
+                raise
+            plant_enacter = PlantEnacter(plant_obs, self.env_cfg)
+            if num_heavy_to_build:
+                enough_metal = plant_obs.metal >= self.heavy_price['metal']
+                enough_power = plant_obs.power >= self.heavy_price['power']
+
+                if enough_metal and enough_power:
+                    actions[factory_id] = plant_enacter.build_heavy()
+                    num_heavy_to_build -= 1
+            else:
+                # TODO: estimate cost of watering
+                actions[factory_id] = plant_enacter.water()
+
+        return actions
+
+    def debug_act(self, step: int, obs, remainingOverageTime: int = 60):
+        observation = CenteredObservation(obs, self.player)
+
+        # who am I?
+        logger.debug(f'I am {observation.myself}')
+
+        # what turn is it?
+        logger.debug(f'{step=}  {remainingOverageTime=}')
+
+        self.calls_to_act += 1
+        actions = dict()
+
+        # how many factories does each player have, and where?
+        def count_and_locate_factories(fac):
+            count = len(fac)
+            locations = list(v['pos'] for v in fac.values())
+            return count, locations
+
+        myteam_ = observation.my_factories
+        opp_team_ = observation.opp_factories
+        try:
+            my_factories = count_and_locate_factories(myteam_)
+            logger.debug(f'{my_factories=}')
+        except KeyError:
+            logger.debug('no factories found in controlled agent\'s team')
+
+        try:
+            opponents_factories = count_and_locate_factories(opp_team_)
+            logger.debug(f'{opponents_factories=}')
+        except KeyError:
+            logger.debug('no factories found in opponent agent\'s team')
+
+        # where are ice and ore?
+        logger.debug('where are ice and ore?')
+        logger.debug(
+            f'{observation.ice_map.shape=}  {observation.ice_map.dtype=}  {observation.ice_map.sum()=}'
+        )
+        logger.debug(
+            f'{observation.ore_map.shape=}  {observation.ore_map.dtype=}  {observation.ore_map.sum()=}'
+        )
+
+        factories = obs['factories'][self.player]
+        self.factories = factories
+
+        for unit_id, factory in factories.items():
+            if factory['power'] >= self.env_cfg.ROBOTS["HEAVY"].POWER_COST and \
+                    factory['cargo']['metal'] >= self.env_cfg.ROBOTS["HEAVY"].METAL_COST:
+                try:
+                    actions[unit_id] = 1  # build heavy
+                except AttributeError:
+                    print(obs)
+                    raise
+
+
+#         logging.debug(f'max queue size={self.env_cfg.UNIT_ACTION_QUEUE_SIZE}')
+
+        for unit_id in observation.my_units.keys():
+            robot_obs = RobotCenteredObservation(obs, unit_id)
+            robot = Enacter(robot_obs, self.env_cfg)
+
+            logging.debug(f'Hi, I am robot {robot_obs.myself}')
+            if not robot_obs.queue:
+                actions[unit_id] = [robot.move_right(finite=5)]
+            logging.debug(f'{robot_obs.state=}')
+
+        self.actions = actions
+
+        # what were my returned actions?
+        logger.debug(f'{actions=}')
+        return actions
 
 
 def reset_w_custom_board(environment, seed, custom_board):
@@ -80,9 +243,9 @@ class IdleAgent:
 def interact(env,
              agents,
              steps,
-             animate_: bool = True,
-             break_at_first_action=False,
-             debug=False,
+             animate_: str = '',
+             break_at_first_action: bool = False,
+             debug: bool = False,
              custom_board: Optional[Board] = None):
     # reset our env
     if custom_board is None:
@@ -108,7 +271,7 @@ def interact(env,
         obs, rewards, dones, infos = env.step(actions)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
-            logging.info(f'{step=}')
+            logging.debug(f'{step=}')
     done = False
 
     inner_counter = 0
@@ -120,7 +283,7 @@ def interact(env,
             o = obs[player]
             if debug:
                 a = agents[player].debug_act(step, o)
-                logging.info(f"{step=}  {inner_counter=}")
+                logging.debug(f"{step=}  {inner_counter=}")
             else:
                 a = agents[player].act(step, o)
             actions[player] = a
@@ -132,7 +295,8 @@ def interact(env,
         if break_at_first_action and inner_counter == 2:
             break
     if animate_:
-        return animate(imgs)
+        logging.info(f'writing {animate_}')
+        return animate(imgs, filename=animate_)
     else:
         return obs
 
