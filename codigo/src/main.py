@@ -7,7 +7,7 @@ from argparse import Namespace
 from agents_experiments import ControlledAgent
 from lux.config import EnvConfig
 from lux.kit import process_obs, process_action
-#  logging.basicConfig(filename='main_37.log', level=logging.DEBUG)
+logging.basicConfig(filename='main_37.log', level=logging.DEBUG)
 agent_dict = dict(
 )  # store potentially multiple dictionaries as kaggle imports code directly
 agent_prev_obs = dict()

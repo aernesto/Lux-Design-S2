@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from copy import deepcopy
 import logging
 from dataclasses import dataclass, field
 from luxai_s2.team import FactionTypes, Team
@@ -63,15 +64,31 @@ class ControlledAgent:
 
     def monitor(self, step, obs):
         o = CenteredObservation(obs, self.player)
-        assert step == len(self.stats) + 1, "{step}  {len_stats}".format(
-            step=step, len_stat=len(self.stats))
-        c = o.total_factories_cargo
-        c.update({
+        assertion_msg = "step type{} step val{} len val{}".format(
+            type(step), step, len(self.stats))
+        assert step == (len(self.stats) + 1), assertion_msg
+
+        # factories stats
+        fc = deepcopy(o.total_factories_cargo)
+        fc.update({
             'max_number_allowed': self.max_allowed_factories,
             'number_existing': len(o.my_factories),
             'power': np.sum(o.factories_ranked_by_power['power']),
         })
-        self.stats.append({'factories_total': c})
+
+        # Robots stats
+        rc = deepcopy(o.total_robots_cargo)
+
+        def sum_robot_power(dict_iterator):
+            return sum(v['power'] for v in dict_iterator)
+
+        rc.update({
+            'max_number_allowed': self.max_allowed_factories,
+            'number_existing': len(o.my_units),
+            'power': sum_robot_power(o.my_units.values()),
+        })
+
+        self.stats.append({'factories_total': fc, 'robots_total': rc})
 
     def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
         if step == 0:
@@ -133,6 +150,7 @@ class ControlledAgent:
                 # TODO: estimate cost of watering
                 actions[factory_id] = plant_enacter.water()
 
+        # Robot moving logic
         for unit_id in observation.my_units:
             robot_obs = RobotCenteredObservation(obs, unit_id)
             robot_enacter = RobotEnacter(robot_obs, self.env_cfg)
@@ -140,6 +158,7 @@ class ControlledAgent:
                 ice_loc = self.get_ice(unit_id)
                 if ice_loc:  # ice_loc is None if all ice already targeted
                     actions[unit_id] = robot_enacter.ice_cycle(ice_loc)
+                    #TODO: add collision avoidance logic
                 #TODO: think of else case here; at least move from plant
 
         return actions

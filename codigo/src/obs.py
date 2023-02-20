@@ -84,6 +84,14 @@ class CenteredObservation:
             return {k: sum(d[k] for d in cargos) for k in keys}
         return {'ice': 0, 'metal': 0, 'ore': 0, 'water': 0}
 
+    @property
+    def total_robots_cargo(self):
+        cargos = [f['cargo'] for f in self.my_units.values()]
+        if cargos:
+            keys = cargos[0].keys()
+            return {k: sum(d[k] for d in cargos) for k in keys}
+        return {'ice': 0, 'metal': 0, 'ore': 0, 'water': 0}
+
 
 class RobotCenteredObservation(CenteredObservation):
     def __init__(self, obs_dict: Dict, unit_id: str):
