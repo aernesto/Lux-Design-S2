@@ -64,20 +64,27 @@ def _move(direction, repeat: int = 0, n: int = 1):
     ])
 
 
+def _dig(resource, repeat: int = 0, n: int = 1):
+    return np.array([
+        _TYPE[_DIG], _DEFAULT_DIRECTION, _RESOURCE[resource], _DEFAULT_AMOUNT,
+        repeat, n
+    ])
+
+
 class MapPlanner:
-    def __init__(self, board):
-        self.board = board
-        self.network = self._board_to_network(self.board)
+    def __init__(self, robot_obs: RobotCenteredObservation):
+        self.obs = robot_obs
+        self.network = self._build_network()
 
     @property
     def board_length(self):
-        return len(self.board['ice'])
+        return len(self.obs.ice_map)
 
     @property
     def rubble(self):
-        return self.board['rubble']
+        return self.obs.rubble_map
 
-    def _board_to_network(self, board):
+    def _build_network(self):
         def xy_iter():
             """
             returns iterable of CartesianPoint built from board
@@ -108,6 +115,18 @@ class MapPlanner:
                 edges.append(
                     (point.right_neighbor, point, dict(weight=weight)))
         G.add_edges_from(edges)
+
+        enemy_plants_ = []
+        for fd in self.obs.opp_factories.values():
+            center = CartesianPoint(*fd['pos'])
+            enemy_plants_ += [
+                center, center.left_neighbor,
+                center.left_neighbor.top_neighbor, center.top_neighbor,
+                center.top_neighbor.right_neighbor, center.right_neighbor,
+                center.right_neighbor.bottom_neighbor, center.bottom_neighbor,
+                center.bottom_neighbor.left_neighbor
+            ]
+        G.remove_nodes_from(enemy_plants_)
         return G
 
     def _nx_shortest_path(self, node1, node2):
@@ -147,7 +166,7 @@ class RobotEnacter:
                  env_cfg: EnvConfig):
         self.obs = robot_obs
         self.conf = env_cfg
-        self.planner = MapPlanner(self.obs.dict_obj['board'])
+        self.planner = MapPlanner(self.obs)
 
     def compress_queue(self, q):
         new_queue = []
@@ -183,9 +202,14 @@ class RobotEnacter:
         # translate path to action queue
         queue = self.planner.nx_path_to_action_sequence(go_nx_path)
         logging.debug('go path={}'.format(queue))
-        # append pickup action
-        queue.append(_pickup(self.obs.ice_capacity, _ICE))
-        logging.debug('go + pickup={}'.format(queue))
+
+        # append dig action
+        #TODO: factor in power cost in below logic
+        amount_to_dig = self.obs.ice_capacity
+        _n = amount_to_dig // self.obs.dig_yield
+        _repeat = False
+        queue.append(_dig(_ICE, _repeat, _n))
+        logging.debug('go + dig={}'.format(queue))
 
         # append return path
         return_nx_path = [v for v in reversed(go_nx_path)]

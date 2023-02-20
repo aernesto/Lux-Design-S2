@@ -52,6 +52,10 @@ class CenteredObservation:
         return self.dict_obj['board']['ice']
 
     @property
+    def rubble_map(self):
+        return self.dict_obj['board']['rubble']
+
+    @property
     def ore_map(self):
         return self.dict_obj['board']['ore']
 
@@ -150,6 +154,10 @@ class RobotCenteredObservation(CenteredObservation):
     @property
     def queue_is_empty(self):
         return len(self.queue) == 0
+
+    @property
+    def dig_yield(self):
+        return ENV_CONFIG.ROBOTS[self.my_type].DIG_RESOURCE_GAIN
 
 
 class FactoryCenteredObservation(CenteredObservation):
