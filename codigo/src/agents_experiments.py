@@ -7,12 +7,13 @@ from luxai_s2.state import State
 from luxai_s2.env import EnvConfig, Board, LuxAI_S2
 from typing import Dict, Optional
 from luxai_s2.unit import Unit
+from space import CartesianPoint
 from collections import OrderedDict
 import numpy as np
 from luxai_s2.utils import animate, my_turn_to_place_factory
 from obs import (CenteredObservation, RobotCenteredObservation,
                  FactoryCenteredObservation)
-from robots import Enacter
+from robots import RobotEnacter
 from plants import PlantEnacter
 
 
@@ -24,6 +25,8 @@ class ControlledAgent:
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
         self.max_allowed_factories = None  # gets set to right value in early_setup method
+        self.ice_pos = None
+        self.ice_assignment = {}
 
     @property
     def heavy_price(self):
@@ -39,6 +42,25 @@ class ControlledAgent:
             'power': self.env_cfg.ROBOTS['LIGHT'].POWER_COST
         }
 
+    def get_ice(self, robot_id):
+        try:
+            return self.ice_assignment[robot_id]
+        except KeyError:
+            unassigned_ice = self.ice_pos - set(self.ice_assignment.values())
+            if unassigned_ice:
+                #TODO: get closest ice
+                logging.debug('--logging from ControlledAgent.get_ice()')
+                logging.debug('robot_id={}'.format(robot_id))
+                logging.debug('ice_pos={}'.format(self.ice_pos))
+                logging.debug('unassigned_ice={}'.format(unassigned_ice))
+                self.ice_assignment[robot_id] = unassigned_ice.pop()
+                logging.debug('ice_assignment={}'.format(self.ice_assignment))
+                logging.debug('--END from ControlledAgent.get_ice()')
+                return self.ice_assignment[robot_id]
+            else:
+                # TODO: think of how to assign more than 1 robot to ice
+                return None
+
     def monitor(self, step, obs):
         o = CenteredObservation(obs, self.player)
         assert step == len(self.stats) + 1, "{step}  {len_stats}".format(
@@ -53,6 +75,11 @@ class ControlledAgent:
 
     def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
         if step == 0:
+            self.ice_pos = set([
+                CartesianPoint(x, y)
+                for x, y in zip(*obs['board']['ice'].nonzero())
+            ])
+            logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
         else:
             myteam = obs['teams'][self.player]
@@ -81,6 +108,7 @@ class ControlledAgent:
         observation = CenteredObservation(obs, self.player)
         actions = dict()
 
+        # Robot Building Logic
         total_heavy_quota = observation.ice_map.sum(
         ) + observation.ore_map.sum()
         existing_heavies = len(observation.my_units)
@@ -93,16 +121,26 @@ class ControlledAgent:
                 logging.debug("{fac}".format(fac=fac))
                 raise
             plant_enacter = PlantEnacter(plant_obs, self.env_cfg)
-            if num_heavy_to_build:
+            if num_heavy_to_build:  # build quota not met
+                # TODO: deal with robot replacement/resurrection
                 enough_metal = plant_obs.metal >= self.heavy_price['metal']
                 enough_power = plant_obs.power >= self.heavy_price['power']
 
                 if enough_metal and enough_power:
                     actions[factory_id] = plant_enacter.build_heavy()
                     num_heavy_to_build -= 1
-            else:
+            else:  # build quota met
                 # TODO: estimate cost of watering
                 actions[factory_id] = plant_enacter.water()
+
+        for unit_id in observation.my_units:
+            robot_obs = RobotCenteredObservation(obs, unit_id)
+            robot_enacter = RobotEnacter(robot_obs, self.env_cfg)
+            if robot_obs.queue_is_empty:
+                ice_loc = self.get_ice(unit_id)
+                if ice_loc:  # ice_loc is None if all ice already targeted
+                    actions[unit_id] = robot_enacter.ice_cycle(ice_loc)
+                #TODO: think of else case here; at least move from plant
 
         return actions
 
@@ -166,7 +204,7 @@ class ControlledAgent:
 
         for unit_id in observation.my_units.keys():
             robot_obs = RobotCenteredObservation(obs, unit_id)
-            robot = Enacter(robot_obs, self.env_cfg)
+            robot = RobotEnacter(robot_obs, self.env_cfg)
 
             logging.debug('Hi, I am robot {m}'.format(m=robot_obs.myself))
             if not robot_obs.queue:

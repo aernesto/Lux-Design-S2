@@ -3,9 +3,12 @@
 import numpy as np
 from typing import Dict
 import logging
+from luxai_s2.config import EnvConfig
+from space import CartesianPoint
 
+#TODO: Not sure whether below line is good practice
+ENV_CONFIG = EnvConfig()
 PLAYER_TYPE = 'player'
-ROBOT_TYPES = {'light': 'light robot', 'heavy': 'heavy robot'}
 FACTORY_TYPE = 'factory'
 
 
@@ -98,7 +101,7 @@ class RobotCenteredObservation(CenteredObservation):
             raise
 
     def _get_type(self):
-        return ROBOT_TYPES[self.state['unit_type']]
+        return self.state['unit_type']
 
     @property
     def my_type(self):
@@ -113,8 +116,8 @@ class RobotCenteredObservation(CenteredObservation):
         return self.dict_obj['units'][self.my_player_name][self.myself]
 
     @property
-    def position(self):
-        return self.state['pos']
+    def pos(self):
+        return CartesianPoint._make(self.state['pos'])
 
     @property
     def power(self):
@@ -123,6 +126,10 @@ class RobotCenteredObservation(CenteredObservation):
     @property
     def ice(self):
         return self.state['cargo']['ice']
+
+    @property
+    def ice_capacity(self):
+        return ENV_CONFIG.ROBOTS[self.my_type].CARGO_SPACE - self.ice
 
     @property
     def ore(self):
@@ -139,6 +146,10 @@ class RobotCenteredObservation(CenteredObservation):
     @property
     def queue(self):
         return self.state['action_queue']
+
+    @property
+    def queue_is_empty(self):
+        return len(self.queue) == 0
 
 
 class FactoryCenteredObservation(CenteredObservation):
@@ -173,8 +184,8 @@ class FactoryCenteredObservation(CenteredObservation):
         return self.dict_obj['factories'][self.my_player_name][self.myself]
 
     @property
-    def position(self):
-        return self.state['pos']
+    def pos(self):
+        return CartesianPoint._make(self.state['pos'])
 
     @property
     def power(self):
