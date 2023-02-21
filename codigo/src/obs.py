@@ -24,6 +24,10 @@ class CenteredObservation:
         self._opp_name = flip_name(self.myself)
 
     @property
+    def board(self):
+        return self.dict_obj['board']
+
+    @property
     def my_type(self):
         return PLAYER_TYPE
 
@@ -49,19 +53,23 @@ class CenteredObservation:
 
     @property
     def ice_map(self):
-        return self.dict_obj['board']['ice']
+        return self.board['ice']
 
     @property
     def rubble_map(self):
-        return self.dict_obj['board']['rubble']
+        return self.board['rubble']
 
     @property
     def ore_map(self):
-        return self.dict_obj['board']['ore']
+        return self.board['ore']
 
     @property
     def my_units(self):
         return self.dict_obj['units'][self.my_player_name]
+
+    @property
+    def my_team(self):
+        return self.dict_obj['teams'][self.my_player_name]
 
     @property
     def opp_units(self):

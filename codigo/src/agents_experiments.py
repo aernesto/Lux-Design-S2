@@ -15,7 +15,7 @@ from luxai_s2.utils import animate, my_turn_to_place_factory
 from obs import (CenteredObservation, RobotCenteredObservation,
                  FactoryCenteredObservation)
 from robots import RobotEnacter
-from plants import PlantEnacter
+from plants import PlantEnacter, choose_spawn_loc
 
 
 class ControlledAgent:
@@ -112,11 +112,8 @@ class ControlledAgent:
                 myteam['place_first'], step)
 
             if factories_to_place > 0 and my_turn_to_place:
-                inner_list = list(
-                    zip(*np.where(obs["board"]["valid_spawns_mask"] == 1)))
-                potential_spawns = np.array(inner_list)
-                selected_location_ix = 0
-                spawn_loc = potential_spawns[selected_location_ix]
+                spawn_loc = choose_spawn_loc(
+                    CenteredObservation(obs, self.player))
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
 
@@ -307,10 +304,11 @@ def interact(env,
              animate_: str = '',
              break_at_first_action: bool = False,
              debug: bool = False,
-             custom_board: Optional[Board] = None):
+             custom_board: Optional[Board] = None,
+             seed=42):
     # reset our env
     if custom_board is None:
-        raise NotImplementedError()
+        obs = env.reset(seed)
     else:
         obs, env = reset_w_custom_board(env,
                                         seed=41,
