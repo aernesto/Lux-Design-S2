@@ -19,8 +19,6 @@ from plants import PlantEnacter, choose_spawn_loc
 
 
 class ControlledAgent:
-    stats = []
-
     def __init__(self, player: str, env_cfg: EnvConfig) -> None:
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
@@ -28,6 +26,7 @@ class ControlledAgent:
         self.max_allowed_factories = None  # gets set to right value in early_setup method
         self.ice_pos = None
         self.ice_assignment = {}
+        self.stats = []
 
     @property
     def heavy_price(self):
