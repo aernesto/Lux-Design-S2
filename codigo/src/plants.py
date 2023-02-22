@@ -38,7 +38,10 @@ class MapSpawner:
     def __init__(self, obs: CenteredObservation):
         self.original_obs = obs
         self.total_factories = self.original_obs.my_team['factories_to_place']
-        self.original_density = self.train_three_gmms(self.original_obs)
+        self.original_density = self.train_three_gmms(self.original_obs,
+                                                      rubble_coef=1,
+                                                      ice_coef=0,
+                                                      ore_coef=0)
 
     def train_three_gmms(self,
                          obs: CenteredObservation,
@@ -51,9 +54,10 @@ class MapSpawner:
         # TODO: include logic to avoid spawning too much in same area
         # TODO: the 'factories_to_place' below currently changes at each call
         clf_ice = GaussianMixture(
-            n_components=self.total_factories,
+            n_components=len(ice_train),
             covariance_type="spherical",
             init_params='kmeans',
+            means_init=ice_train,
         )
         clf_ice.fit(ice_train)
 
@@ -61,9 +65,10 @@ class MapSpawner:
         ore = obs.ore_map
         ore_train = np.vstack(ore.T.nonzero()).T
         clf_ore = GaussianMixture(
-            n_components=self.total_factories,
+            n_components=len(ore_train),
             covariance_type="spherical",
             init_params='kmeans',
+            means_init=ore_train,
         )
         clf_ore.fit(ore_train)
 
@@ -73,10 +78,14 @@ class MapSpawner:
         threshold = 0  # TODO: don't hard-code this value
         rubble[rubble <= threshold] = 0
         rubble_train = np.vstack(np.where(rubble.T == 0)).T
+        if len(rubble_train) == 0:
+            rubble_train = np.vstack(np.where(rubble.T <= 5)).T
+
         clf_rubble = GaussianMixture(
-            n_components=self.total_factories,
+            n_components=len(rubble_train),
             covariance_type="spherical",
             init_params='kmeans',
+            means_init=rubble_train,
         )
         clf_rubble.fit(rubble_train)
 
