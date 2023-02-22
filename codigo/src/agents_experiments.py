@@ -15,7 +15,7 @@ from luxai_s2.utils import animate, my_turn_to_place_factory
 from obs import (CenteredObservation, RobotCenteredObservation,
                  FactoryCenteredObservation)
 from robots import RobotEnacter
-from plants import PlantEnacter, choose_spawn_loc
+from plants import PlantEnacter, MapSpawner
 
 
 class ControlledAgent:
@@ -27,6 +27,7 @@ class ControlledAgent:
         self.ice_pos = None
         self.ice_assignment = {}
         self.stats = []
+        self.map_spawner = None
 
     @property
     def heavy_price(self):
@@ -98,6 +99,9 @@ class ControlledAgent:
             logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
         else:
+            if step == 1:
+                self.map_spawner = MapSpawner(
+                    CenteredObservation(obs, self.player))
             myteam = obs['teams'][self.player]
             factories_to_place = myteam['factories_to_place']
             if self.max_allowed_factories is None:
@@ -111,7 +115,7 @@ class ControlledAgent:
                 myteam['place_first'], step)
 
             if factories_to_place > 0 and my_turn_to_place:
-                spawn_loc = choose_spawn_loc(
+                spawn_loc = self.map_spawner.choose_spawn_loc(
                     CenteredObservation(obs, self.player))
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
