@@ -186,6 +186,7 @@ class RobotCenteredObservation(CenteredObservation):
 
 class FactoryCenteredObservation(CenteredObservation):
     def __init__(self, obs_dict: Dict, unit_id: str):
+        assert isinstance(obs_dict, dict), "obs_dict is type={}".format(type(obs_dict))
         self.dict_obj = obs_dict
         assert unit_id.startswith('factory')
         self._my_unit_id = unit_id
@@ -200,7 +201,7 @@ class FactoryCenteredObservation(CenteredObservation):
             raise ValueError(
                 "unit with ID {uid} not found in obs_dict".format(uid=uid))
         except TypeError:
-            logging.debug('{s}  {d}'.format(s=type(self), d=dir(self)))
+            logging.error('{}'.format(self.dict_obj))
             raise
 
     @property

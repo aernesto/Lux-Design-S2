@@ -19,7 +19,7 @@ from plants import PlantEnacter, ConnCompMapSpawner
 
 
 class ControlledAgent:
-    def __init__(self, player: str, env_cfg: EnvConfig) -> None:
+    def __init__(self, player: str, env_cfg: EnvConfig, **kwargs) -> None:
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
@@ -28,6 +28,7 @@ class ControlledAgent:
         self.ice_assignment = {}
         self.stats = []
         self.map_spawner = None
+        self.options = kwargs
 
     @property
     def heavy_price(self):
@@ -62,8 +63,8 @@ class ControlledAgent:
                 # TODO: think of how to assign more than 1 robot to ice
                 return None
 
-    def monitor(self, step, obs):
-        o = CenteredObservation(obs, self.player)
+    def monitor(self, step, dobs):
+        o = CenteredObservation(dobs, self.player)
         assertion_msg = "step type{} step val{} len val{}".format(
             type(step), step, len(self.stats))
         assert step == (len(self.stats) + 1), assertion_msg
@@ -90,9 +91,9 @@ class ControlledAgent:
 
         self.stats.append({'factories_total': fc, 'robots_total': rc})
 
-    def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
+    def early_setup(self, step: int, dobs, remainingOverageTime: int = 60):
         if step == 0:
-            ice_board = obs['board']['ice']
+            ice_board = dobs['board']['ice']
             self.ice_pos = set([
                 CartesianPoint(x, y, len(ice_board))
                 for x, y in zip(*ice_board.nonzero())
@@ -100,16 +101,16 @@ class ControlledAgent:
             #  logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
         else:
-            if step == 1:
-                self.map_spawner = ConnCompMapSpawner(CenteredObservation(
-                    obs, self.player),
-                                                      threshold=0,
-                                                      rad=30)
-            myteam = obs['teams'][self.player]
+            self.map_spawner = ConnCompMapSpawner(
+                    CenteredObservation(dobs, self.player),
+                    threshold=self.options['threshold'],
+                    rad=self.options['radius']
+                )
+            myteam = dobs['teams'][self.player]
             factories_to_place = myteam['factories_to_place']
             if self.max_allowed_factories is None:
                 self.max_allowed_factories = factories_to_place
-            self.monitor(step, obs)
+            self.monitor(step, dobs)
             water_left = myteam['water']
             metal_left = myteam['metal']
 
@@ -118,14 +119,13 @@ class ControlledAgent:
                 myteam['place_first'], step)
 
             if factories_to_place > 0 and my_turn_to_place:
-                spawn_loc = self.map_spawner.choose_spawn_loc(
-                    CenteredObservation(obs, self.player))
+                spawn_loc = self.map_spawner.choose_spawn_loc()
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
 
-    def act(self, step: int, obs, remainingOverageTime: int = 60):
-        self.monitor(step, obs)
-        observation = CenteredObservation(obs, self.player)
+    def act(self, step: int, dobs, remainingOverageTime: int = 60):
+        self.monitor(step, dobs)
+        observation = CenteredObservation(dobs, self.player)
         actions = dict()
 
         # Robot Building Logic
@@ -136,7 +136,7 @@ class ControlledAgent:
         for fac in observation.factories_ranked_by_power:
             factory_id = fac['factory_id']
             try:
-                plant_obs = FactoryCenteredObservation(obs, factory_id)
+                plant_obs = FactoryCenteredObservation(dobs, factory_id)
             except AttributeError:
                 logging.debug("{fac}".format(fac=fac))
                 raise
@@ -155,7 +155,7 @@ class ControlledAgent:
 
         # Robot moving logic
         for unit_id in observation.my_units:
-            robot_obs = RobotCenteredObservation(obs, unit_id)
+            robot_obs = RobotCenteredObservation(dobs, unit_id)
             robot_enacter = RobotEnacter(robot_obs, self.env_cfg)
             if robot_obs.queue_is_empty:
                 ice_loc = self.get_ice(unit_id)

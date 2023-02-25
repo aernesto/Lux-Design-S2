@@ -136,6 +136,17 @@ class CartesianPoint:
             neighbors.update({self.left_neighbor})
         return neighbors
 
+    @property
+    def plant_first_lichen_tiles(self):
+        tiles = set()
+        pre_tiles = self.surrounding_neighbors
+        for pre_tile in pre_tiles:
+            for n in pre_tile.all_neighbors:
+                if n not in pre_tiles:
+                    tiles.update({n})
+        return tiles
+
+
     def __repr__(self):
         return "x:{} y:{} size:{}".format(self.x, self.y, self.board_length)
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from obs import CenteredObservation, RobotCenteredObservation
+from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredObservation
 from luxai_s2.env import EnvConfig
 import numpy as np
 import networkx as nx
@@ -95,10 +95,15 @@ class MapPlanner:
         G = nx.MultiDiGraph()
         G.add_nodes_from(xy_iter(self.board_length))
         edges = []
-        # x goes left to right
-        # y goes top to bottom
         for point in xy_iter(self.board_length):
             rb = self.rubble[point.x, point.y]
+            factories = self.obs.my_factories
+            for fac_id in factories:
+                fac_pos = FactoryCenteredObservation(self.obs.dict_obj, fac_id).pos
+                fac_tiles = {fac_pos}.union(fac_pos.surrounding_neighbors)
+                if point in fac_tiles:
+                    rb = 0
+                    break
             # TODO: fetch the library's real cost functions
             light_weight = np.floor(1 + 0.05 * rb)
             heavy_weight = np.floor(20 + rb)
@@ -144,6 +149,11 @@ class MapPlanner:
             return _move(_DOWN)
         if dx == 0 and dy == -1:
             return _move(_UP)
+
+    def heavy_distance(self, p1: CartesianPoint, p2: CartesianPoint) -> float:
+        """Distance for a heavy robot (in units of power) between 2 points"""
+        path = self._nx_shortest_path(p1, p2, cost_type='heavy_weight')
+        return nx.path_weight(self.network, path, 'heavy_weight')
 
     def nx_path_to_action_sequence(self, path):
         try:

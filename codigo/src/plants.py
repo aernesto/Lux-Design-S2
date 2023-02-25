@@ -136,6 +136,7 @@ class ConnCompMapSpawner:
                  rad: float = 30):
         self.rad = rad
         self.original_obs = obs
+        self.obs_ = None  # will get set by choose_spawn_loc
         self.planner = MapPlanner(self.original_obs)
         self.rubble = self.original_obs.rubble_map
         self.board_length = len(self.rubble)
@@ -143,10 +144,8 @@ class ConnCompMapSpawner:
         self.thr = threshold
         self.components = identify_conn_components(self.rubble, self.thr)
 
-    def _get_potential_spawns(self, obs: Optional[CenteredObservation] = None):
-        if obs is None:
-            obs = self.original_obs
-        x, y = np.where(obs.board["valid_spawns_mask"] == 1)
+    def _get_potential_spawns(self):
+        x, y = np.where(self.obs_.board["valid_spawns_mask"] == 1)
         inner_list = list(zip(x, y, [self.board_length] * len(x)))
         potential_spawns = [CartesianPoint(*x_) for x_ in inner_list]
         return x, y, potential_spawns
@@ -154,9 +153,8 @@ class ConnCompMapSpawner:
     def choose_spawn_loc(self, obs: Optional[CenteredObservation] = None):
         if obs is None:
             obs = self.original_obs
-        # TODO: include logic to avoid spawning too much in same area
-        # higher score is better
-        x, y, potential_spawns = self._get_potential_spawns(obs)
+        self.obs_ = obs
+        x, y, potential_spawns = self._get_potential_spawns()
         scores = self.score(potential_spawns)
         dtype = [('score', float), ('x', int), ('y', int)]
         all_factories = []
@@ -180,20 +178,34 @@ class ConnCompMapSpawner:
             raise
 
     def score(self, points: Sequence[CartesianPoint]) -> Array:
-        #TODO: add logic to avoid building close to other factories
         scores = []
         for point in points:
             score = 0
+            lichen_tiles = point.plant_first_lichen_tiles
+            for p in lichen_tiles:
+                # add 1 point per 0-rubble first lichen tile
+                score += self.rubble[p.x, p.y] <= self.thr
+
+            # if score above is below 6, skip
+            if score < 6:
+                scores.append(0)
+                continue
+
+            # add area score
             for c in self.components:
-                if point in c.content:
+                if any(n in c.content for n in lichen_tiles):
                     score += c.area
-                    # add 1 point per 0-rubble tile under plant
-                    for p in point.surrounding_neighbors:
-                        score += self.rubble[p.x, p.y] <= self.thr
                     break
-            logging.debug('point={} gets an area score of {}'.format(
-                point, score))
+
+            # add resources score
             score += self.planner.resources_radial_count(point, self.rad)
+
+            # add distance from self score
+            for plant_id in self.obs_.my_factories:
+                fac_obs = FactoryCenteredObservation(self.obs_.dict_obj, plant_id)
+                if self.planner.heavy_distance(point, fac_obs.pos) > 60:
+                    score += 1
+
             scores.append(score)
             logging.debug('point={} gets a score of {}'.format(point, score))
         return np.array(scores)
