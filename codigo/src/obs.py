@@ -25,7 +25,11 @@ class CenteredObservation:
 
     @property
     def board(self):
-        return self.dict_obj['board']
+        try:
+            return self.dict_obj['board']
+        except KeyError:
+            logging.debug('available keys={}'.format(self.dict_obj.keys()))
+            raise
 
     @property
     def my_type(self):

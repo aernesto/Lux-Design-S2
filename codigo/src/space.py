@@ -19,7 +19,7 @@ def xy_iter(size: int = 48):
 
 def identify_conn_components(r: Array, threshold: int = 0):
     components = set()
-    for point in xy_iter(6):
+    for point in xy_iter(len(r)):
         if r.T[point.x, point.y] <= threshold:  # 0-rubble tiles
             logging.debug('visited point={}'.format(point))
             logging.debug('neighbor set={}'.format(point.all_neighbors))

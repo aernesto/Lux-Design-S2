@@ -92,11 +92,12 @@ class ControlledAgent:
 
     def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
         if step == 0:
+            ice_board = obs['board']['ice']
             self.ice_pos = set([
-                CartesianPoint(x, y)
-                for x, y in zip(*obs['board']['ice'].nonzero())
+                CartesianPoint(x, y, len(ice_board))
+                for x, y in zip(*ice_board.nonzero())
             ])
-            logging.debug('{}'.format(self.ice_pos))
+            #  logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
         else:
             if step == 1:
