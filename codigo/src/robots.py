@@ -98,7 +98,7 @@ class MapPlanner:
         # x goes left to right
         # y goes top to bottom
         for point in xy_iter(self.board_length):
-            rb = self.rubble.T[point.x, point.y]
+            rb = self.rubble[point.x, point.y]
             # TODO: fetch the library's real cost functions
             light_weight = np.floor(1 + 0.05 * rb)
             heavy_weight = np.floor(20 + rb)
@@ -171,8 +171,8 @@ class MapPlanner:
         count = 0
         # loop over them and count
         for node in new_graph.nodes:
-            count += self.ice.T[node.x, node.y]
-            count += self.ore.T[node.x, node.y]
+            count += self.ice[node.x, node.y]
+            count += self.ore[node.x, node.y]
 
         return count
 
