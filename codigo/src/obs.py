@@ -56,6 +56,10 @@ class CenteredObservation:
         return self.board['ice']
 
     @property
+    def board_length(self):
+        return len(self.ice_map)
+
+    @property
     def rubble_map(self):
         return self.board['rubble']
 
@@ -137,7 +141,7 @@ class RobotCenteredObservation(CenteredObservation):
 
     @property
     def pos(self):
-        return CartesianPoint._make(self.state['pos'])
+        return CartesianPoint(*self.state['pos'], self.board_length)
 
     @property
     def power(self):
@@ -209,7 +213,7 @@ class FactoryCenteredObservation(CenteredObservation):
 
     @property
     def pos(self):
-        return CartesianPoint._make(self.state['pos'])
+        return CartesianPoint(*self.state['pos'], self.board_length)
 
     @property
     def power(self):

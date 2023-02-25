@@ -15,7 +15,7 @@ from luxai_s2.utils import animate, my_turn_to_place_factory
 from obs import (CenteredObservation, RobotCenteredObservation,
                  FactoryCenteredObservation)
 from robots import RobotEnacter
-from plants import PlantEnacter, MapSpawner
+from plants import PlantEnacter, ConnCompMapSpawner
 
 
 class ControlledAgent:
@@ -100,8 +100,10 @@ class ControlledAgent:
             return dict(faction="AlphaStrike", bid=0)
         else:
             if step == 1:
-                self.map_spawner = MapSpawner(
-                    CenteredObservation(obs, self.player))
+                self.map_spawner = ConnCompMapSpawner(CenteredObservation(
+                    obs, self.player),
+                                                      threshold=0,
+                                                      rad=30)
             myteam = obs['teams'][self.player]
             factories_to_place = myteam['factories_to_place']
             if self.max_allowed_factories is None:

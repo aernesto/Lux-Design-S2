@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from obs import RobotCenteredObservation
+from obs import CenteredObservation, RobotCenteredObservation
 from luxai_s2.env import EnvConfig
 import numpy as np
 import networkx as nx
@@ -91,7 +91,7 @@ class MapPlanner:
     def ore(self):
         return self.obs.ore_map
 
-    def _build_network(self, cost_type: str):
+    def _build_network(self):
         G = nx.MultiDiGraph()
         G.add_nodes_from(xy_iter(self.board_length))
         edges = []
@@ -106,13 +106,13 @@ class MapPlanner:
             if not point.at_top_edge:
                 edges.append((point.top_neighbor, point, wd.copy()))
 
-            if not point.get_at_bottom_edge(self.board_length):
+            if not point.at_bottom_edge:
                 edges.append((point.bottom_neighbor, point, wd.copy()))
 
             if not point.at_left_edge:
                 edges.append((point.left_neighbor, point, wd.copy()))
 
-            if not point.get_at_right_edge(self.board_length):
+            if not point.at_right_edge:
                 edges.append((point.right_neighbor, point, wd.copy()))
         G.add_edges_from(edges)
 
@@ -216,7 +216,7 @@ class RobotEnacter:
         # get shortest path from robot to ice
         go_nx_path = self.planner._nx_shortest_path(self.obs.pos,
                                                     ice_loc,
-                                                    cost_type=cost_type)
+                                                    cost_type=self.cost_type)
         logging.debug('robot pos={} ice_loc={}'.format(self.obs.pos, ice_loc))
 
         # translate path to action queue
@@ -232,9 +232,8 @@ class RobotEnacter:
         logging.debug('go + dig={}'.format(queue))
 
         # append return path
-        return_nx_path = self.planner._nx_shortest_path(ice_loc,
-                                                        self.obs.pos,
-                                                        cost_type=cost_type)
+        return_nx_path = self.planner._nx_shortest_path(
+            ice_loc, self.obs.pos, cost_type=self.cost_type)
         queue += self.planner.nx_path_to_action_sequence(return_nx_path)
         logging.debug('go + pickup + return={}'.format(queue))
 

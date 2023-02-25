@@ -4,8 +4,11 @@ from obs import FactoryCenteredObservation, CenteredObservation
 from sklearn.mixture import GaussianMixture
 from luxai_s2.env import EnvConfig
 import numpy as np
-from space import identify_conn_components
+from typing import Sequence
+from space import identify_conn_components, CartesianPoint
 from robots import MapPlanner
+
+Array = np.ndarray
 
 
 def invert_dict(d):
@@ -176,7 +179,7 @@ class ConnCompMapSpawner:
                     break
             score += self.planner.resources_radial_count(point, self.rad)
             scores.append(score)
-        return scores
+        return np.array(scores)
 
 
 if __name__ == "__main__":
