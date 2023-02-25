@@ -317,7 +317,7 @@ def interact(env,
         obs = env.reset(seed)
     else:
         obs, env = reset_w_custom_board(env,
-                                        seed=41,
+                                        seed=seed,
                                         custom_board=custom_board)
     np.random.seed(0)
     imgs = []
@@ -334,6 +334,8 @@ def interact(env,
             actions[player] = a
         step += 1
         obs, rewards, dones, infos = env.step(actions)
+        if step == 1:
+            first_obs = deepcopy(obs)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
             logging.debug('{step}'.format(step=step))
@@ -364,7 +366,7 @@ def interact(env,
         logging.info('writing {animate_}'.format(animate_=animate_))
         return animate(imgs, filename=animate_)
     else:
-        return obs
+        return first_obs, obs
 
 
 if __name__ == "__main__":

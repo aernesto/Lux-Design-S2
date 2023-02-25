@@ -4,7 +4,7 @@ from obs import FactoryCenteredObservation, CenteredObservation
 from sklearn.mixture import GaussianMixture
 from luxai_s2.env import EnvConfig
 import numpy as np
-from typing import Sequence
+from typing import Sequence, Optional
 from space import identify_conn_components, CartesianPoint
 from robots import MapPlanner
 
@@ -143,21 +143,32 @@ class ConnCompMapSpawner:
         self.thr = threshold
         self.components = identify_conn_components(self.rubble, self.thr)
 
-    def choose_spawn_loc(self, obs: CenteredObservation):
-        # TODO: include logic to avoid spawning too much in same area
-        # TODO: the 'factories_to_place' below currently changes at each call
+    def _get_potential_spawns(self, obs: Optional[CenteredObservation] = None):
+        if obs is None:
+            obs = self.original_obs
         x, y = np.where(obs.board["valid_spawns_mask"] == 1)
         inner_list = list(zip(x, y, [self.board_length] * len(x)))
         potential_spawns = [CartesianPoint(*x_) for x_ in inner_list]
+        return x, y, potential_spawns
+
+    def choose_spawn_loc(self, obs: Optional[CenteredObservation] = None):
+        if obs is None:
+            obs = self.original_obs
+        # TODO: include logic to avoid spawning too much in same area
         # higher score is better
+        x, y, potential_spawns = self._get_potential_spawns(obs)
         scores = self.score(potential_spawns)
         dtype = [('score', float), ('x', int), ('y', int)]
         all_factories = []
         a = np.array(list(zip(scores, x, y)),
                      dtype=dtype)  # create a structured array
         sorted_ = np.flip(np.sort(a, order='score'))
+        logging.debug('sorted_first_10={}'.format(sorted_[:10]))
+        logging.debug('sorted_last_10={}'.format(sorted_[-10:]))
         try:
-            return np.array([sorted_[0]['x'], sorted_[0]['y']])
+            selection = np.array([sorted_[0]['x'], sorted_[0]['y']])
+            logging.debug('selection={}'.format(selection))
+            return selection
         except (IndexError, AttributeError):
             logging.debug('scores.shape={}'.format(scores.shape))
             logging.debug('x.shape={}'.format(x.shape))
@@ -177,8 +188,11 @@ class ConnCompMapSpawner:
                 if point in c.content:
                     score += c.area
                     break
+            logging.debug('point={} gets an area score of {}'.format(
+                point, score))
             score += self.planner.resources_radial_count(point, self.rad)
             scores.append(score)
+            logging.debug('point={} gets a score of {}'.format(point, score))
         return np.array(scores)
 
 
