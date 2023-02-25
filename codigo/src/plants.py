@@ -187,6 +187,9 @@ class ConnCompMapSpawner:
             for c in self.components:
                 if point in c.content:
                     score += c.area
+                    # add 1 point per 0-rubble tile under plant
+                    for p in point.surrounding_neighbors:
+                        score += self.rubble[p.x, p.y] <= self.thr
                     break
             logging.debug('point={} gets an area score of {}'.format(
                 point, score))

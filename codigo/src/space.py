@@ -83,8 +83,24 @@ class CartesianPoint:
         return CartesianPoint(self.x - 1, self.y, self.board_length)
 
     @property
+    def top_left_neighbor(self):
+        return self.top_neighbor.left_neighbor
+
+    @property
+    def bottom_left_neighbor(self):
+        return self.bottom_neighbor.left_neighbor
+
+    @property
     def right_neighbor(self):
         return CartesianPoint(self.x + 1, self.y, self.board_length)
+
+    @property
+    def top_right_neighbor(self):
+        return self.top_neighbor.right_neighbor
+
+    @property
+    def bottom_right_neighbor(self):
+        return self.bottom_neighbor.right_neighbor
 
     @property
     def all_neighbors(self):
@@ -93,6 +109,27 @@ class CartesianPoint:
             neighbors.update({self.top_neighbor})
         if not self.at_bottom_edge:
             neighbors.update({self.bottom_neighbor})
+        if not self.at_right_edge:
+            neighbors.update({self.right_neighbor})
+        if not self.at_left_edge:
+            neighbors.update({self.left_neighbor})
+        return neighbors
+
+    @property
+    def surrounding_neighbors(self):
+        neighbors = set()
+        if not self.at_top_edge:
+            neighbors.update({self.top_neighbor})
+            if not self.at_right_edge:
+                neighbors.update({self.top_right_neighbor})
+            if not self.at_left_edge:
+                neighbors.update({self.top_left_neighbor})
+        if not self.at_bottom_edge:
+            neighbors.update({self.bottom_neighbor})
+            if not self.at_right_edge:
+                neighbors.update({self.bottom_right_neighbor})
+            if not self.at_left_edge:
+                neighbors.update({self.bottom_left_neighbor})
         if not self.at_right_edge:
             neighbors.update({self.right_neighbor})
         if not self.at_left_edge:
