@@ -17,7 +17,7 @@ def xy_iter(size: int = 48):
         yield CartesianPoint(x, y, s)
 
 
-def identify_connected_components(r: Array, threshold: int = 0):
+def identify_conn_components(r: Array, threshold: int = 0):
     components = set()
     for point in xy_iter(6):
         if r.T[point.x, point.y] <= threshold:  # 0-rubble tiles
@@ -129,6 +129,10 @@ class ConnectedComponent:
             if point in inset.all_neighbors:
                 return True
         return False
+
+    @property
+    def area(self):
+        return len(self)
 
     @staticmethod
     def union(components):

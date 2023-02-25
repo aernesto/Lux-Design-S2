@@ -3,9 +3,8 @@ import logging
 from obs import RobotCenteredObservation
 from luxai_s2.env import EnvConfig
 import numpy as np
-import itertools
 import networkx as nx
-from space import CartesianPoint
+from space import CartesianPoint, xy_iter
 
 
 def invert_dict(d):
@@ -72,8 +71,8 @@ def _dig(resource, repeat: int = 0, n: int = 1):
 
 
 class MapPlanner:
-    def __init__(self, robot_obs: RobotCenteredObservation):
-        self.obs = robot_obs
+    def __init__(self, obs: CenteredObservation):
+        self.obs = obs
         self.network = self._build_network()
 
     @property
@@ -84,36 +83,37 @@ class MapPlanner:
     def rubble(self):
         return self.obs.rubble_map
 
-    def _build_network(self):
-        def xy_iter():
-            """
-            returns iterable of CartesianPoint built from board
-            """
-            return map(
-                CartesianPoint._make,
-                itertools.product(range(self.board_length),
-                                  range(self.board_length)))
+    @property
+    def ice(self):
+        return self.obs.ice_map
 
+    @property
+    def ore(self):
+        return self.obs.ore_map
+
+    def _build_network(self, cost_type: str):
         G = nx.MultiDiGraph()
-        G.add_nodes_from(xy_iter())
+        G.add_nodes_from(xy_iter(self.board_length))
         edges = []
         # x goes left to right
         # y goes top to bottom
-        for point in xy_iter():
-            weight = self.rubble.T[point.x, point.y]
+        for point in xy_iter(self.board_length):
+            rb = self.rubble.T[point.x, point.y]
+            # TODO: fetch the library's real cost functions
+            light_weight = np.floor(1 + 0.05 * rb)
+            heavy_weight = np.floor(20 + rb)
+            wd = dict(light_weight=light_weight, heavy_weight=heavy_weight)
             if not point.at_top_edge:
-                edges.append((point.top_neighbor, point, dict(weight=weight)))
+                edges.append((point.top_neighbor, point, wd.copy()))
 
             if not point.get_at_bottom_edge(self.board_length):
-                edges.append(
-                    (point.bottom_neighbor, point, dict(weight=weight)))
+                edges.append((point.bottom_neighbor, point, wd.copy()))
 
             if not point.at_left_edge:
-                edges.append((point.left_neighbor, point, dict(weight=weight)))
+                edges.append((point.left_neighbor, point, wd.copy()))
 
             if not point.get_at_right_edge(self.board_length):
-                edges.append(
-                    (point.right_neighbor, point, dict(weight=weight)))
+                edges.append((point.right_neighbor, point, wd.copy()))
         G.add_edges_from(edges)
 
         enemy_plants_ = []
@@ -129,11 +129,11 @@ class MapPlanner:
         G.remove_nodes_from(enemy_plants_)
         return G
 
-    def _nx_shortest_path(self, node1, node2):
+    def _nx_shortest_path(self, node1, node2, cost_type: str):
         return nx.shortest_path(self.network,
                                 source=node1,
                                 target=node2,
-                                weight='weight')
+                                weight=cost_type)
 
     def _action_translator(self, dx, dy):
         if dx == 1 and dy == 0:
@@ -160,6 +160,22 @@ class MapPlanner:
             previous_point = point
         return actions
 
+    def resources_radial_count(self, center: CartesianPoint, radius: float):
+        """Count resources in radius"""
+        # get all points within radius
+        new_graph = nx.generators.ego_graph(self.network,
+                                            center,
+                                            radius=radius,
+                                            distance='heavy_weight')
+
+        count = 0
+        # loop over them and count
+        for node in new_graph.nodes:
+            count += self.ice.T[node.x, node.y]
+            count += self.ore.T[node.x, node.y]
+
+        return count
+
 
 class RobotEnacter:
     def __init__(self, robot_obs: RobotCenteredObservation,
@@ -167,6 +183,8 @@ class RobotEnacter:
         self.obs = robot_obs
         self.conf = env_cfg
         self.planner = MapPlanner(self.obs)
+        self.cost_type = self.obs.my_type.lower() + '_weight'
+        logging.debug('RobotEnacter.cost_type={}'.format(self.cost_type))
 
     def compress_queue(self, q):
         new_queue = []
@@ -196,7 +214,9 @@ class RobotEnacter:
         logging.debug('--debug from RobotEnacter.ice_cycle')
 
         # get shortest path from robot to ice
-        go_nx_path = self.planner._nx_shortest_path(self.obs.pos, ice_loc)
+        go_nx_path = self.planner._nx_shortest_path(self.obs.pos,
+                                                    ice_loc,
+                                                    cost_type=cost_type)
         logging.debug('robot pos={} ice_loc={}'.format(self.obs.pos, ice_loc))
 
         # translate path to action queue
@@ -212,7 +232,9 @@ class RobotEnacter:
         logging.debug('go + dig={}'.format(queue))
 
         # append return path
-        return_nx_path = [v for v in reversed(go_nx_path)]
+        return_nx_path = self.planner._nx_shortest_path(ice_loc,
+                                                        self.obs.pos,
+                                                        cost_type=cost_type)
         queue += self.planner.nx_path_to_action_sequence(return_nx_path)
         logging.debug('go + pickup + return={}'.format(queue))
 
