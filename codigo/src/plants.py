@@ -142,7 +142,18 @@ class ConnCompMapSpawner:
         self.board_length = len(self.rubble)
         self.total_factories = self.original_obs.my_team['factories_to_place']
         self.thr = threshold
+        self.min_self_distance = 400
+        self.self_avoidance_reward = 20
+        self.resource_score_coef = 2
         self.components = identify_conn_components(self.rubble, self.thr)
+        self.min_lichen_tiles = {
+            0: 10,
+            1: 8,
+            2: 6,
+            3: 6,
+            4: 6,
+            5: 4  # a priori never used
+        }
 
     def _get_potential_spawns(self):
         x, y = np.where(self.obs_.board["valid_spawns_mask"] == 1)
@@ -155,7 +166,9 @@ class ConnCompMapSpawner:
             obs = self.original_obs
         self.obs_ = obs
         x, y, potential_spawns = self._get_potential_spawns()
-        scores = self.score(potential_spawns)
+        num_factories = len(self.obs_.my_factories)
+        min_lichen = self.min_lichen_tiles[num_factories]
+        scores = self.score(potential_spawns, min_lichen)
         dtype = [('score', float), ('x', int), ('y', int)]
         all_factories = []
         a = np.array(list(zip(scores, x, y)),
@@ -177,7 +190,11 @@ class ConnCompMapSpawner:
             logging.debug("sorted_[0]['y']={}".format(sorted_[0]))
             raise
 
-    def score(self, points: Sequence[CartesianPoint]) -> Array:
+    def score(
+        self,
+        points: Sequence[CartesianPoint],
+        min_lichen_tiles: int
+        ) -> Array:
         scores = []
         for point in points:
             score = 0
@@ -187,9 +204,15 @@ class ConnCompMapSpawner:
                 score += self.rubble[p.x, p.y] <= self.thr
 
             # if score above is below 6, skip
-            if score < 6:
+            if score < min_lichen_tiles:
                 scores.append(0)
                 continue
+
+            # add resources score
+            score += self.resource_score_coef * self.planner.resources_radial_count(point, self.rad)
+            # if score < min_resource_score:
+            #     scores.append(score)
+            #     continue
 
             # add area score
             for c in self.components:
@@ -197,14 +220,19 @@ class ConnCompMapSpawner:
                     score += c.area
                     break
 
-            # add resources score
-            score += self.planner.resources_radial_count(point, self.rad)
-
             # add distance from self score
             for plant_id in self.obs_.my_factories:
-                fac_obs = FactoryCenteredObservation(self.obs_.dict_obj, plant_id)
-                if self.planner.heavy_distance(point, fac_obs.pos) > 60:
-                    score += 1
+                fac_obs = FactoryCenteredObservation(
+                self.obs_.dict_obj,
+                plant_id
+                )
+                if self.planner.heavy_distance(point, fac_obs.pos) > self.min_self_distance:
+                    score += self.self_avoidance_reward
+
+            # # penalize based on distance to resources
+            # for resource_tile in self.obs_.resources_pos:
+            #     if score > 0:
+            #         score -= self.planner.heavy_distance(point, resource_tile)
 
             scores.append(score)
             logging.debug('point={} gets a score of {}'.format(point, score))

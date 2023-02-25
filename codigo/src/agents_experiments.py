@@ -24,7 +24,8 @@ class ControlledAgent:
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
         self.max_allowed_factories = None  # gets set to right value in early_setup method
-        self.ice_pos = None
+        self.ice_pos = None  # set in early_setup
+        self.ore_pos = None  # set in early_setup
         self.ice_assignment = {}
         self.stats = []
         self.map_spawner = None
@@ -94,9 +95,14 @@ class ControlledAgent:
     def early_setup(self, step: int, dobs, remainingOverageTime: int = 60):
         if step == 0:
             ice_board = dobs['board']['ice']
+            ore_board = dobs['board']['ore']
             self.ice_pos = set([
                 CartesianPoint(x, y, len(ice_board))
                 for x, y in zip(*ice_board.nonzero())
+            ])
+            self.ore_pos = set([
+                CartesianPoint(x, y, len(ice_board))
+                for x, y in zip(*ore_board.nonzero())
             ])
             #  logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
@@ -270,35 +276,7 @@ def reset_w_custom_board(environment: LuxAI_S2, seed: int,
     return observations, environment
 
 
-class IdleAgent:
-    def __init__(self, player: str, env_cfg: EnvConfig) -> None:
-        self.player = player
-        self.opp_player = "player_1" if self.player == "player_0" else "player_0"
-        np.random.seed(0)
-        self.env_cfg: EnvConfig = env_cfg
-        self.debug_act = self.act
-
-    def early_setup(self, step: int, obs, remainingOverageTime: int = 60):
-        if step == 0:
-            return dict(faction="AlphaStrike", bid=0)
-        actions = dict()
-        try:
-            factories_to_place = obs['teams'][
-                self.player]['factories_to_place']
-        except AttributeError:
-            print(obs['teams'][self.player])
-            raise
-        my_turn_to_place = my_turn_to_place_factory(
-            obs['teams'][self.player]['place_first'], step)
-
-        if factories_to_place > 0 and my_turn_to_place:
-            potential_spawns = np.array(
-                list(zip(*np.where(obs["board"]["valid_spawns_mask"] == 1))))
-            selected_location_ix = -1
-            spawn_loc = potential_spawns[selected_location_ix]
-            return dict(spawn=spawn_loc, metal=150, water=150)
-        return dict()
-
+class IdleAgent(ControlledAgent):
     def act(self, step: int, obs, remainingOverageTime: int = 60):
         actions = dict()
         return actions

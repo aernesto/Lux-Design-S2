@@ -22,6 +22,15 @@ class CenteredObservation:
         assert player_name.startswith('player')
         self._my_player_name = player_name
         self._opp_name = flip_name(self.myself)
+        self.ice_pos = set([
+            CartesianPoint(x, y, self.board_length)
+            for x, y in zip(*self.ice_map.nonzero())
+        ])
+        self.ore_pos = set([
+            CartesianPoint(x, y, self.board_length)
+            for x, y in zip(*self.ore_map.nonzero())
+        ])
+        self.resource_pos = self.ice_pos.union(self.ore_pos)
 
     @property
     def board(self):
