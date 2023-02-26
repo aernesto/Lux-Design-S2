@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import logging
-from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredObservation
+from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredObservation, PlantAssignment
 from luxai_s2.env import EnvConfig
 import numpy as np
 import networkx as nx
+from typing import Sequence
 from space import CartesianPoint, xy_iter
 
 
@@ -71,6 +72,8 @@ def _dig(resource, repeat: int = 0, n: int = 1):
 
 
 class MapPlanner:
+    """Class that helps planning robot moves."""
+
     def __init__(self, obs: CenteredObservation):
         self.obs = obs
         self.network = self._build_network()
@@ -99,7 +102,8 @@ class MapPlanner:
             rb = self.rubble[point.x, point.y]
             factories = self.obs.my_factories
             for fac_id in factories:
-                fac_pos = FactoryCenteredObservation(self.obs.dict_obj, fac_id).pos
+                fac_pos = FactoryCenteredObservation(
+                    self.obs.dict_obj, fac_id).pos
                 fac_tiles = {fac_pos}.union(fac_pos.surrounding_neighbors)
                 if point in fac_tiles:
                     rb = 0
@@ -185,6 +189,35 @@ class MapPlanner:
             count += self.ore[node.x, node.y]
 
         return count
+    
+    def rank_factories_by_distance_from(self, ref: CartesianPoint, cost_type: str):
+        """Ranks factories by (cost_type)-distance to reference location.
+
+        Args:
+            ref (CartesianPoint): _description_
+            cost_type (str): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        #TODO: see if a cache of distances can be built lazily
+        factory_list = []  # will contain tuples to build structured numpy array
+        for fac in self.obs.factory_ids:
+            best_distance = np.inf
+            # we need the best factory tile (which cannot be the center)
+            for tile in fac.pos.surrounding_neighbors:
+                dist_to_tile = nx.path_weight(
+                    self.network,
+                    nx.shortest_path(self.network, ref, tile, weight=cost_type),
+                    weight=cost_type
+                    )
+                if dist_to_tile < best_distance:
+                    best_distance = dist_to_tile
+                    best_tile = tile
+            factory_list.append((fac, best_tile, best_distance))
+        dtype = [('fac', PlantAssignment), ('tile', CartesianPoint), ('dist', float)]
+        a = np.array(factory_list, dtype=dtype)  # create a structured array
+        return np.sort(a, order='dist')
 
 
 class RobotEnacter:
@@ -234,7 +267,7 @@ class RobotEnacter:
         logging.debug('go path={}'.format(queue))
 
         # append dig action
-        #TODO: factor in power cost in below logic
+        # TODO: factor in power cost in below logic
         amount_to_dig = self.obs.ice_capacity
         _n = amount_to_dig // self.obs.dig_yield
         _repeat = False

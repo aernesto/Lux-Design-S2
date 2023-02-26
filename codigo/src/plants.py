@@ -4,6 +4,7 @@ from obs import FactoryCenteredObservation, CenteredObservation
 from sklearn.mixture import GaussianMixture
 from luxai_s2.env import EnvConfig
 import numpy as np
+from collections import namedtuple
 from typing import Sequence, Optional
 from space import identify_conn_components, CartesianPoint
 from robots import MapPlanner
@@ -194,7 +195,7 @@ class ConnCompMapSpawner:
         self,
         points: Sequence[CartesianPoint],
         min_lichen_tiles: int
-        ) -> Array:
+    ) -> Array:
         scores = []
         for point in points:
             score = 0
@@ -209,7 +210,8 @@ class ConnCompMapSpawner:
                 continue
 
             # add resources score
-            score += self.resource_score_coef * self.planner.resources_radial_count(point, self.rad)
+            score += self.resource_score_coef * \
+                self.planner.resources_radial_count(point, self.rad)
             # if score < min_resource_score:
             #     scores.append(score)
             #     continue
@@ -223,8 +225,8 @@ class ConnCompMapSpawner:
             # add distance from self score
             for plant_id in self.obs_.my_factories:
                 fac_obs = FactoryCenteredObservation(
-                self.obs_.dict_obj,
-                plant_id
+                    self.obs_.dict_obj,
+                    plant_id
                 )
                 if self.planner.heavy_distance(point, fac_obs.pos) > self.min_self_distance:
                     score += self.self_avoidance_reward

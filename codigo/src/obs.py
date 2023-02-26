@@ -5,11 +5,17 @@ from typing import Dict
 import logging
 from luxai_s2.config import EnvConfig
 from space import CartesianPoint
+from collections import namedtuple
 
-#TODO: Not sure whether below line is good practice
+RobotId = namedtuple("RobotId", "unit_id type", module=__name__)
+PlantAssignment = namedtuple("PlantAssignment", "unit_id pos", module=__name__)
+
+# TODO: Not sure whether below line is good practice
 ENV_CONFIG = EnvConfig()
 PLAYER_TYPE = 'player'
 FACTORY_TYPE = 'factory'
+HEAVY_TYPE = 'HEAVY'
+LIGHT_TYPE = 'LIGHT'
 
 
 def flip_name(n):
@@ -59,6 +65,10 @@ class CenteredObservation:
     @property
     def my_factories(self):
         return self.dict_obj['factories'][self.my_player_name]
+    
+    @property
+    def num_factories(self):
+        return len(self.my_factories)
 
     @property
     def opp_factories(self):
@@ -83,6 +93,22 @@ class CenteredObservation:
     @property
     def my_units(self):
         return self.dict_obj['units'][self.my_player_name]
+
+    @property
+    def robot_ids(self):
+        return [RobotId(k, v['unit_type']) for k, v in self.my_units.items()]
+
+    @property
+    def factory_ids(self):
+        return [PlantAssignment(k, v['pos']) for k, v in self.my_factories.items()]
+
+    @property
+    def my_heavy_units(self):
+        return {k: v for k, v in self.my_units.items() if v.unit_type == HEAVY_TYPE}
+
+    @property
+    def my_light_units(self):
+        return {k: v for k, v in self.my_units.items() if v.unit_type == LIGHT_TYPE}
 
     @property
     def my_team(self):
@@ -117,12 +143,20 @@ class CenteredObservation:
             return {k: sum(d[k] for d in cargos) for k in keys}
         return {'ice': 0, 'metal': 0, 'ore': 0, 'water': 0}
 
+    def generate_factory_obs(self):
+        for fac_id in self.my_factories.keys():
+            yield FactoryCenteredObservation(self.dict_obj, fac_id)
+    
+    def generate_robot_obs(self):
+        for robot_id in self.my_units.keys():
+            yield RobotCenteredObservation(self.dict_obj, robot_id)
+
 
 class RobotCenteredObservation(CenteredObservation):
     def __init__(self, obs_dict: Dict, unit_id: str):
         self.dict_obj = obs_dict
         assert unit_id.startswith('unit')
-        self._my_unit_id = unit_id
+        self.unit_id = unit_id
         self._my_player_name = self._infer_player_from_unit_id(unit_id)
         self._opp_name = flip_name(self.my_player_name)
 
@@ -143,10 +177,14 @@ class RobotCenteredObservation(CenteredObservation):
     @property
     def my_type(self):
         return self._get_type()
+    
+    @property
+    def cost_type(self):  # used for weight choosing in networkx
+        return 'heavy_weight' if self.my_type == 'HEAVY' else 'light_weight'
 
     @property
     def myself(self):
-        return self._my_unit_id
+        return RobotId(self.unit_id, self.my_type)
 
     @property
     def state(self):
@@ -195,10 +233,11 @@ class RobotCenteredObservation(CenteredObservation):
 
 class FactoryCenteredObservation(CenteredObservation):
     def __init__(self, obs_dict: Dict, unit_id: str):
-        assert isinstance(obs_dict, dict), "obs_dict is type={}".format(type(obs_dict))
+        assert isinstance(obs_dict, dict), "obs_dict is type={}".format(
+            type(obs_dict))
         self.dict_obj = obs_dict
         assert unit_id.startswith('factory')
-        self._my_unit_id = unit_id
+        self.unit_id = unit_id
         self._my_player_name = self._infer_player_from_unit_id(unit_id)
         self._opp_name = flip_name(self.my_player_name)
 
@@ -219,7 +258,7 @@ class FactoryCenteredObservation(CenteredObservation):
 
     @property
     def myself(self):
-        return self._my_unit_id
+        return PlantAssignment(self.unit_id, self.pos)
 
     @property
     def state(self):
