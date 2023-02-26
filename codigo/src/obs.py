@@ -100,7 +100,7 @@ class CenteredObservation:
 
     @property
     def factory_ids(self):
-        return [PlantAssignment(k, v['pos']) for k, v in self.my_factories.items()]
+        return [PlantAssignment(k, CartesianPoint(*v['pos'], self.board_length)) for k, v in self.my_factories.items()]
 
     @property
     def my_heavy_units(self):
@@ -188,7 +188,7 @@ class RobotCenteredObservation(CenteredObservation):
 
     @property
     def state(self):
-        return self.dict_obj['units'][self.my_player_name][self.myself]
+        return self.dict_obj['units'][self.my_player_name][self.unit_id]
 
     @property
     def pos(self):
@@ -262,7 +262,7 @@ class FactoryCenteredObservation(CenteredObservation):
 
     @property
     def state(self):
-        return self.dict_obj['factories'][self.my_player_name][self.myself]
+        return self.dict_obj['factories'][self.my_player_name][self.unit_id]
 
     @property
     def pos(self):

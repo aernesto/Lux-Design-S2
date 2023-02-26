@@ -8,16 +8,21 @@ from space import CartesianPoint
 from collections import OrderedDict, defaultdict
 import numpy as np
 from luxai_s2.utils import animate, my_turn_to_place_factory
-from obs import CenteredObservation, RobotCenteredObservation, RobotId, HEAVY_TYPE, LIGHT_TYPE
-from robots import RobotEnacter, MapPlanner
-from plants import PlantEnacter, ConnCompMapSpawner, PlantAssignment
-
+from obs import (CenteredObservation,
+                 RobotId,
+                 HEAVY_TYPE,
+                 LIGHT_TYPE,
+                 PlantAssignment)
+from robots import MapPlanner
+from plants import PlantEnacter, ConnCompMapSpawner
+from codetiming import Timer
 
 class ControlledAgent:
     def __init__(self, player: str, env_cfg: EnvConfig, **kwargs) -> None:
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
+        self.board_length: int = self.env_cfg.map_size
         self.max_allowed_factories: int = None  # set in early_setup method
         self.ice_pos: set = None  # set in early_setup
         self.ore_pos: set = None  # set in early_setup
@@ -27,6 +32,8 @@ class ControlledAgent:
         self.stats = []
         self.options = kwargs
         self.max_per_plant = {HEAVY_TYPE: 8, LIGHT_TYPE: 20}
+        self.spawn_timer = Timer(f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logging.info)
+        self.choose_loc_timer = Timer(f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logging.info)
 
     def initialize_oracle(self):
         return defaultdict(dict, {
@@ -40,20 +47,22 @@ class ControlledAgent:
             },
         })
 
-    def update_oracle_early_setup(self, dobs: Mapping):
+    def _update_plant_info(self, obs: Mapping):
         """Update the oracle at each call of early_setup."""
         # for each newly created factory, create its robot quotas
-        for plant_id, props in dobs['factories'].items():
-            fac_id = PlantAssignment(plant_id, props['pos'])
+        for plant_id, props in obs.my_factories.items():
+            fac_id = PlantAssignment(plant_id, CartesianPoint(*props['pos'], self.board_length))
             if fac_id not in self.oracle['robots_to_plants_quotas']:
                 self.oracle['robots_to_plants_quotas'][fac_id] = {
                     HEAVY_TYPE: {'current': 0, 'max': self.max_per_plant[HEAVY_TYPE]},
                     LIGHT_TYPE: {'current': 0,
                                  'max': self.max_per_plant[LIGHT_TYPE]}
                 }
+        #TODO: clean up dead plants and figure out what to do with assigned units
 
     def update_oracle(self, obs: CenteredObservation):
         """Update oracle at each call of act method."""
+        self._update_plant_info(obs)
         self.oracle['dobs'] = obs.dict_obj
         self.oracle['obs'] = obs
         # old_plan = deepcopy(self.oracle['planned_actions'])
@@ -61,7 +70,7 @@ class ControlledAgent:
         fac_ids = self.oracle['obs'].factory_ids
 
         # review assignment of units to plants
-        #TODO: think of how to manage actual target tiles for robots beyond plant centers
+        # TODO: think of how to manage actual target tiles for robots beyond plant centers
         old_assignment = self.oracle['robot_assignments_to_plants'].copy()
         # just a pointer
         new_assignment = self.oracle['robot_assignments_to_plants']
@@ -168,7 +177,6 @@ class ControlledAgent:
         return actions
 
     def early_setup(self, step: int, dobs: Mapping, remainingOverageTime: int = 60):
-        self.update_oracle_early_setup(dobs)
         if step == 0:
             ice_board = dobs['board']['ice']
             ore_board = dobs['board']['ore']
@@ -184,11 +192,12 @@ class ControlledAgent:
             return dict(faction="AlphaStrike", bid=0)
         else:
             try:
-                self.map_spawner = ConnCompMapSpawner(
-                    CenteredObservation(dobs, self.player),
-                    threshold=self.options['threshold'],
-                    rad=self.options['radius']
-                )
+                with self.spawn_timer:
+                    self.map_spawner = ConnCompMapSpawner(
+                        CenteredObservation(dobs, self.player),
+                        threshold=self.options['threshold'],
+                        rad=self.options['radius']
+                    )
             except KeyError:
                 logging.error('options={}'.format(self.options))
                 raise
@@ -207,7 +216,8 @@ class ControlledAgent:
 
             # TODO: add logic to control metal and water allocation
             if factories_to_place > 0 and my_turn_to_place:
-                spawn_loc = self.map_spawner.choose_spawn_loc()
+                with self.choose_loc_timer:
+                    spawn_loc = self.map_spawner.choose_spawn_loc()
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
 
@@ -295,8 +305,8 @@ def reset_w_custom_board(environment: LuxAI_S2, seed: int,
     for agent in environment.possible_agents:
         environment.state.units[agent] = OrderedDict()
         environment.state.factories[agent] = OrderedDict()
-        if environment.collect_stats:
-            environment.state.stats[agent] = create_empty_stats()
+        # if environment.collect_stats:
+        #     environment.state.stats[agent] = create_empty_stats()
     obs = environment.state.get_obs()
     observations = {agent: obs for agent in environment.agents}
     return observations, environment
@@ -327,22 +337,27 @@ def interact(env,
     imgs = []
     step = 0
 
+    interact_timer = Timer(f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logging.info)
     # iterate until phase 1 ends
     while env.state.real_env_steps < 0:
         if step >= steps:
             break
         actions = {}
+        interact_timer.start()
         for player in env.agents:
             o = obs[player]
             a = agents[player].early_setup(step, o)
             actions[player] = a
         step += 1
+        
         obs, rewards, dones, infos = env.step(actions)
+        interact_timer.stop()
         if step == 1:
             first_obs = deepcopy(obs)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
             logging.debug('{step}'.format(step=step))
+        
     done = False
 
     inner_counter = 0
@@ -350,6 +365,7 @@ def interact(env,
         if step >= steps:
             break
         actions = {}
+        interact_timer.start()
         for player in env.agents:
             o = obs[player]
             if debug:
@@ -361,6 +377,7 @@ def interact(env,
             actions[player] = a
         step += 1
         obs, rewards, dones, infos = env.step(actions)
+        interact_timer.stop()
         imgs += [env.render("rgb_array", width=640, height=640)]
         done = dones["player_0"] and dones["player_1"]
         inner_counter += 1
@@ -374,4 +391,13 @@ def interact(env,
 
 
 if __name__ == "__main__":
-    pass
+    import sys
+    logging.basicConfig(filename="module_log.log", level=logging.INFO)
+    seed = int(sys.argv[1])
+    num_steps = int(sys.argv[2])
+    # make a random env
+    env = LuxAI_S2()
+    obs = env.reset()
+    agent0 = ControlledAgent('player_0', env.env_cfg, threshold=15, radius=130)
+    agent1 = ControlledAgent('player_1', env.env_cfg, threshold=15, radius=130)
+    interact(env, {'player_0': agent0, 'player_1': agent1}, num_steps, seed=seed)
