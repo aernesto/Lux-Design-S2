@@ -169,18 +169,18 @@ class ConnCompMapSpawner:
         x, y, potential_spawns = self._get_potential_spawns()
         num_factories = len(self.obs_.my_factories)
         min_lichen = self.min_lichen_tiles[num_factories]
-        scores = self.score(potential_spawns, min_lichen)
+        scores, info = self.score(potential_spawns, min_lichen)
         dtype = [('score', float), ('x', int), ('y', int)]
-        all_factories = []
         a = np.array(list(zip(scores, x, y)),
                      dtype=dtype)  # create a structured array
         sorted_ = np.flip(np.sort(a, order='score'))
         logging.debug('sorted_first_10={}'.format(sorted_[:10]))
         logging.debug('sorted_last_10={}'.format(sorted_[-10:]))
         try:
-            selection = np.array([sorted_[0]['x'], sorted_[0]['y']])
+            xy_list = [sorted_[0]['x'], sorted_[0]['y']]
+            selection = np.array(xy_list)
+            res_info = info[CartesianPoint(*xy_list, self.board_length)]
             logging.debug('selection={}'.format(selection))
-            return selection
         except (IndexError, AttributeError):
             logging.debug('scores.shape={}'.format(scores.shape))
             logging.debug('x.shape={}'.format(x.shape))
@@ -190,6 +190,7 @@ class ConnCompMapSpawner:
             logging.debug('sorted_[0]={}'.format(sorted_[0]))
             logging.debug("sorted_[0]['y']={}".format(sorted_[0]))
             raise
+        return selection, res_info['ice_set'], res_info['ore_set']
 
     def score(
         self,
@@ -197,6 +198,7 @@ class ConnCompMapSpawner:
         min_lichen_tiles: int
     ) -> Array:
         scores = []
+        resource_info = {}
         for point in points:
             score = 0
             lichen_tiles = point.plant_first_lichen_tiles
@@ -210,8 +212,14 @@ class ConnCompMapSpawner:
                 continue
 
             # add resources score
-            score += self.resource_score_coef * \
-                self.planner.resources_radial_count(point, self.rad)
+            ice_count, ice_set, ore_count, ore_set = self.planner.resources_radial_count(point, self.rad)
+            score += self.resource_score_coef * (ice_count + ore_count)
+            resource_info[point] = {
+                'ice_count': ice_count,
+                'ice_set': ice_set,
+                'ore_count': ore_count,
+                'ore_set': ore_set
+            }
             # if score < min_resource_score:
             #     scores.append(score)
             #     continue
@@ -238,7 +246,7 @@ class ConnCompMapSpawner:
 
             scores.append(score)
             logging.debug('point={} gets a score of {}'.format(point, score))
-        return np.array(scores)
+        return np.array(scores), resource_info
 
 
 if __name__ == "__main__":

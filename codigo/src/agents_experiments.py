@@ -3,37 +3,45 @@ from copy import deepcopy
 import logging
 from luxai_s2.state import State
 from luxai_s2.env import EnvConfig, Board, LuxAI_S2
-from typing import Optional, Mapping, Dict
+from typing import Optional, Mapping, Dict, Union
 from space import CartesianPoint
 from collections import OrderedDict, defaultdict
 import numpy as np
+from itertools import cycle
 from luxai_s2.utils import animate, my_turn_to_place_factory
 from obs import (CenteredObservation,
                  RobotId,
                  HEAVY_TYPE,
                  LIGHT_TYPE,
-                 PlantAssignment)
-from robots import MapPlanner
+                 PlantAssignment,
+                 PlantId)
+from robots import MapPlanner, RobotEnacter
 from plants import PlantEnacter, ConnCompMapSpawner
 from codetiming import Timer
+Array = np.ndarray
+
 
 class ControlledAgent:
-    def __init__(self, player: str, env_cfg: EnvConfig, **kwargs) -> None:
+    def __init__(self, player: str, env_cfg: EnvConfig, enable_monitoring: bool = False, **kwargs) -> None:
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
         self.board_length: int = self.env_cfg.map_size
         self.max_allowed_factories: int = None  # set in early_setup method
-        self.ice_pos: set = None  # set in early_setup
-        self.ore_pos: set = None  # set in early_setup
         self.planner: MapPlanner = None  # set in early_setup
         self.map_spawner = None  # set in early_setup
         self.oracle = self.initialize_oracle()
         self.stats = []
+        self._rng = np.random.default_rng()
+        self.enable_monitoring = enable_monitoring
         self.options = kwargs
         self.max_per_plant = {HEAVY_TYPE: 8, LIGHT_TYPE: 20}
-        self.spawn_timer = Timer(f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logging.info)
-        self.choose_loc_timer = Timer(f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logging.info)
+        self.spawn_timer = Timer(
+            f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logging.info)
+        self.choose_loc_timer = Timer(
+            f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logging.info)
+        self.tile_iterator = defaultdict(dict)
+        self.resource_iter = defaultdict(dict)
 
     def initialize_oracle(self):
         return defaultdict(dict, {
@@ -47,18 +55,49 @@ class ControlledAgent:
             },
         })
 
+    def _tile_iterator(self, center: CartesianPoint):
+        def generator():
+            point = {
+                0: center.top_neighbor,
+                1: center.top_right_neighbor,
+                2: center.right_neighbor,
+                3: center.bottom_right_neighbor,
+                4: center.bottom_neighbor,
+                5: center.bottom_left_neighbor,
+                6: center.left_neighbor,
+                7: center.top_left_neighbor
+            }
+            i = 0
+            while True:
+                i += 1
+                yield point[i % 8]
+        return generator()
+
+    def _resource_iterator(self, points):
+        return cycle(points)
+
     def _update_plant_info(self, obs: Mapping):
         """Update the oracle at each call of early_setup."""
-        # for each newly created factory, create its robot quotas
+        # for each newly created factory:
         for plant_id, props in obs.my_factories.items():
-            fac_id = PlantAssignment(plant_id, CartesianPoint(*props['pos'], self.board_length))
+            fac_id = PlantId(plant_id, CartesianPoint(
+                *props['pos'], self.board_length))
+            # create its robot quotas
             if fac_id not in self.oracle['robots_to_plants_quotas']:
                 self.oracle['robots_to_plants_quotas'][fac_id] = {
                     HEAVY_TYPE: {'current': 0, 'max': self.max_per_plant[HEAVY_TYPE]},
                     LIGHT_TYPE: {'current': 0,
                                  'max': self.max_per_plant[LIGHT_TYPE]}
                 }
-        #TODO: clean up dead plants and figure out what to do with assigned units
+                # create its tile and resource iterators
+                self.tile_iterator[fac_id] = self._tile_iterator(fac_id.pos)
+                ice_nghb = self.oracle['plant_resource_nghb']['ice']
+                ore_nghb = self.oracle['plant_resource_nghb']['ore']
+                self.resource_iter[fac_id] = {
+                    'ice': self._resource_iterator(ice_nghb),
+                    'ore': self._resource_iterator(ore_nghb),
+                }
+        # TODO: clean up dead plants and figure out what to do with assigned units
 
     def update_oracle(self, obs: CenteredObservation):
         """Update oracle at each call of act method."""
@@ -74,7 +113,6 @@ class ControlledAgent:
         old_assignment = self.oracle['robot_assignments_to_plants'].copy()
         # just a pointer
         new_assignment = self.oracle['robot_assignments_to_plants']
-        plants_quotas = self.oracle['robots_to_plants_quotas']
 
         # first, drop dead robots
         for dead_robot in set(old_assignment.keys()) - set(self.oracle['obs'].robot_ids):
@@ -90,7 +128,9 @@ class ControlledAgent:
                 # note that in theory, if robot was created, factory plant was not met last turn
                 for plant in fac_ids:
                     if plant.pos == robot.pos:
-                        self.assign_and_count_robots(rid, plant, 1)
+                        tile = PlantAssignment(
+                            plant.unit_id, plant.pos, next(self.tile_iterator[plant]))
+                        self.assign_and_count_robots(rid, tile, 1)
                         break
 
                 # otherwise assign to closest "not full" factory for now
@@ -98,56 +138,71 @@ class ControlledAgent:
                 for fac_id in fac_ids:
                     if not self.unmet_robot_quota(fac_id, robot.my_type):
                         forbidden.append(fac_id)
-                close_to_far: list = self.planner.rank_factories_by_distance_from(
+                close_to_far: Array = self.planner.rank_factories_by_distance_from(
                     robot.pos, cost_type=robot.cost_type)
 
                 # find closest not full
-                for fac in [f['fac'] for f in close_to_far if f['fac'] not in forbidden]:
-                    self.assign_and_count_robots(rid, fac, 1)
+                for fac_info in [f for f in close_to_far if f['fac'] not in forbidden]:
+                    # TODO: is there a clever way to use fac.tile here?
+                    fac = fac_info['fac']
+                    tile = PlantAssignment(
+                        fac.unit_id, fac.pos, next(self.tile_iterator[fac]))
+                    self.assign_and_count_robots(rid, tile, 1)
                     break
 
                 # if all factories full, issue warning and assign to closest full one
                 if rid not in new_assignment:
-                    for fac in [f['fac'] for f in close_to_far if f['fac'] in forbidden]:
-                        self.assign_and_count_robots(rid, fac, 1)
+                    for fac_info in [f for f in close_to_far if f['fac'] in forbidden]:
+                        fac = fac_info['fac']
+                        tile = PlantAssignment(
+                            fac.unit_id, fac.pos, next(self.tile_iterator[fac]))
+                        self.assign_and_count_robots(rid, tile, 1)
                         break
 
-    def assign_and_count_robots(self, robotid: RobotId, plantid: PlantAssignment, increment: int) -> None:
-        """Bookkeeping of oracle regarding robot assignment to plant.
+    def _bernoulli(self, p):
+        return self._rng.random() < p
+
+    def assign_and_count_robots(self, robotid: RobotId, plant: PlantAssignment, increment: int) -> None:
+        """Bookkeeping of oracle regarding robot assignment to plant and resource type.
 
         Args:
             robotid (RobotId): robot to be assigned or removed
-            plantid (PlantAssignment): plant receiving the robot assignment (or removal) instruction
+            plant (PlantAssignment): plant receiving the robot assignment (or removal) instruction
             increment (int): +1 to assign the robot and -1 to remove it
 
         Raises:
             ValueError: If increment is neither 1 or -1.
         """
         # update the robots to plants assignment dict
+        # and the robots to resource type assignment dict
         assgn = self.oracle['robot_assignments_to_plants']
+        resource_assgn = self.oracle['robot_to_resource']
         if increment == 1:
-            assgn[robotid] = plantid
+            assgn[robotid] = plant
+            # TODO: better logic below?
+            resource_assgn[robotid] = 'ice' if self._bernoulli(.7) else 'ore'
         elif increment == -1:
             assgn.pop(robotid)
         else:
             raise ValueError("increment arg must be -1 or 1")
 
         # udpate the plants quotas dict
-        self.increment_robot_load(plantid, robotid, increment)
+        self.increment_robot_load(plant, robotid, increment)
 
-    def unmet_robot_quota(self, facid: PlantAssignment, robot_type: str) -> bool:
+    def unmet_robot_quota(self, facid: PlantId, robot_type: str) -> bool:
         vals = self.oracle['robots_to_plants_quotas'][facid][robot_type]
         return vals['current'] < vals['max']
 
     def increment_robot_load(
             self,
-            facid: PlantAssignment,
+            fac: Union[PlantAssignment, PlantId],
             robot_id: RobotId,
             by_value: int = 1
     ) -> None:
+        facid = PlantId(fac.unit_id, fac.pos)
         self.oracle['robots_to_plants_quotas'][facid][robot_id.type]['current'] += by_value
 
-    def build_robots(self):
+    def factory_actions(self):
         # decide how many heavy robots to build
         # current logic is to build 8 heavy robots per factory
         obs = self.oracle['obs']
@@ -163,32 +218,82 @@ class ControlledAgent:
                 enough_metal = fac.metal >= self.oracle['heavy_price']['metal']
                 enough_power = fac.power >= self.oracle['heavy_price']['power']
                 if enough_metal and enough_power:
+                    # TODO: add logic to avoid spawning if robot present on center tile
                     actions[fac.unit_id] = plant_enacter.build_heavy()
-        # TODO: deal with light robots
+            # TODO: deal with light robots
+
+            if fac.unit_id not in actions:
+                # TODO: better estimate cost of watering
+                if fac.water > 1000:
+                    actions[fac.unit_id] = plant_enacter.water()
         return actions
 
-    def water(self):
+    def robot_actions(self):
+        obs = self.oracle['obs']
         actions = self.oracle['planned_actions']
-        for fac in self.oracle['obs'].generate_factory_obs():
-            plant_enacter = PlantEnacter(fac, self.env_cfg)
-            if fac.unit_id not in actions:
-                # TODO: estimate cost of watering
-                actions[fac.unit_id] = plant_enacter.water()
-        return actions
+        for robot in obs.generate_robot_obs():
+            if not robot.queue_is_empty:
+                # TODO: add logic to change queue if necessary
+                continue
+            # this robot's queue is empty
+            # we assume robot is already assigned to a plant, if not it's a bug
+            assigned_plant = self.oracle['robot_assignments_to_plants'][robot.myself]
+            plant = PlantId(assigned_plant.unit_id, assigned_plant.pos)
+            # Decide what the robot will do; a few options are:
+            # 1. mine ice
+            # 2. mine ore
+            # 3. dig rubble
+            # 4. dig ennemy's lichen
+            # 5. attack ennemy robot
+            # 6. self-destruct at location
+            # 7. pickup resource or power from plant
+            # 8. transfer resource or power to plant or robot
+
+            # for now assign to ice and ore cycles
+            enacter = RobotEnacter(robot, self.env_cfg)
+
+            try:
+                target_tile = next(
+                        self.resource_iter[plant][
+                            # a resource type
+                            self.oracle['robot_to_resource'][robot.myself]
+                            ]
+                    )
+            except StopIteration:
+                # try other resource
+                self._flip_robot_resource_assignment(robot.myself)
+                try:
+                    target_tile = next(
+                        self.resource_iter[plant][
+                            # a resource type
+                            self.oracle['robot_to_resource'][robot.myself]
+                            ]
+                    )
+                except StopIteration:
+                    # this is not going well
+                    # TODO: let's make this robot a Kamikaze?
+                    pass
+                else:
+                    actions[self.robot.unit_id] = enacter.dig_cycle(
+                    target_tile, 
+                    assigned_plant.tile, 
+                    repeat=True, 
+                    dig_n=5
+                    )
+            else:
+                actions[self.robot.unit_id] = enacter.dig_cycle(
+                    target_tile, 
+                    assigned_plant.tile, 
+                    repeat=True, 
+                    dig_n=5
+                    )
+    def _flip_robot_resource_assignment(self, rid: RobotId):
+        storage = self.oracle['robot_to_resource']
+        old = storage[rid]
+        storage[rid] = 'ice' if old == 'ore' else 'ore'
 
     def early_setup(self, step: int, dobs: Mapping, remainingOverageTime: int = 60):
         if step == 0:
-            ice_board = dobs['board']['ice']
-            ore_board = dobs['board']['ore']
-            self.ice_pos = set([
-                CartesianPoint(x, y, len(ice_board))
-                for x, y in zip(*ice_board.nonzero())
-            ])
-            self.ore_pos = set([
-                CartesianPoint(x, y, len(ice_board))
-                for x, y in zip(*ore_board.nonzero())
-            ])
-            #  logging.debug('{}'.format(self.ice_pos))
             return dict(faction="AlphaStrike", bid=0)
         else:
             try:
@@ -209,7 +314,8 @@ class ControlledAgent:
             factories_to_place = myteam['factories_to_place']
             if self.max_allowed_factories is None:
                 self.max_allowed_factories = factories_to_place
-            self.monitor(step, dobs)
+            if self.enable_monitoring:
+                self.monitor(step, dobs)
 
             my_turn_to_place = my_turn_to_place_factory(
                 myteam['place_first'], step)
@@ -217,7 +323,9 @@ class ControlledAgent:
             # TODO: add logic to control metal and water allocation
             if factories_to_place > 0 and my_turn_to_place:
                 with self.choose_loc_timer:
-                    spawn_loc = self.map_spawner.choose_spawn_loc()
+                    spawn_loc, ice, ore = self.map_spawner.choose_spawn_loc()
+                self.oracle['plant_resource_nghb']['ice'] = ice
+                self.oracle['plant_resource_nghb']['ore'] = ore
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
 
@@ -232,25 +340,12 @@ class ControlledAgent:
         Returns:
             Dict: actions
         """
-        self.monitor(step, dobs)
+        if self.enable_monitoring:
+            self.monitor(step, dobs)
         observation = CenteredObservation(dobs, self.player)
         self.update_oracle(observation)
-
-        # Robot Building Logic
-        self.build_robots()  # will update self.oracle['planned_actions']
-        self.water()  # will update self.oracle['planned_actions']
-
-        # # Robot moving logic
-        # for unit_id in observation.my_units:
-        #     robot_obs = RobotCenteredObservation(dobs, unit_id)
-        #     robot_enacter = RobotEnacter(robot_obs, self.env_cfg)
-        #     if robot_obs.queue_is_empty:
-        #         ice_loc = self.get_ice(unit_id)
-        #         if ice_loc:  # ice_loc is None if all ice already targeted
-        #             actions[unit_id] = robot_enacter.ice_cycle(ice_loc)
-        #             # TODO: add collision avoidance logic
-        #         # TODO: think of else case here; at least move from plant
-
+        self.factory_actions()  # will update self.oracle['planned_actions']
+        self.robot_actions()  # will update self.oracle['planned_actions']
         return self.oracle['planned_actions']
 
     def monitor(self, step, dobs):
@@ -261,10 +356,11 @@ class ControlledAgent:
 
         # factories stats
         fc = deepcopy(o.total_factories_cargo)
+        tot_factory_power = np.sum(o.factories_ranked_by_power['power'])
         fc.update({
             'max_number_allowed': self.max_allowed_factories,
             'number_existing': len(o.my_factories),
-            'power': np.sum(o.factories_ranked_by_power['power']),
+            'power': tot_factory_power,
         })
 
         # Robots stats
@@ -273,13 +369,20 @@ class ControlledAgent:
         def sum_robot_power(dict_iterator):
             return sum(v['power'] for v in dict_iterator)
 
+        tot_robot_power = sum_robot_power(o.my_units.values())
         rc.update({
             'max_number_allowed': self.max_allowed_factories,
             'number_existing': len(o.my_units),
-            'power': sum_robot_power(o.my_units.values()),
+            'power': tot_robot_power,
         })
 
-        self.stats.append({'factories_total': fc, 'robots_total': rc})
+        # TODO: track total lichen
+        general = {
+            'total_power_in_game': tot_factory_power + tot_robot_power,
+        }
+
+        self.stats.append(
+            {'factories_total': fc, 'robots_total': rc, 'general': general})
 
 
 def reset_w_custom_board(environment: LuxAI_S2, seed: int,
@@ -337,7 +440,8 @@ def interact(env,
     imgs = []
     step = 0
 
-    interact_timer = Timer(f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logging.info)
+    interact_timer = Timer(
+        f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logging.info)
     # iterate until phase 1 ends
     while env.state.real_env_steps < 0:
         if step >= steps:
@@ -349,7 +453,7 @@ def interact(env,
             a = agents[player].early_setup(step, o)
             actions[player] = a
         step += 1
-        
+
         obs, rewards, dones, infos = env.step(actions)
         interact_timer.stop()
         if step == 1:
@@ -357,7 +461,7 @@ def interact(env,
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
             logging.debug('{step}'.format(step=step))
-        
+
     done = False
 
     inner_counter = 0
@@ -400,4 +504,5 @@ if __name__ == "__main__":
     obs = env.reset()
     agent0 = ControlledAgent('player_0', env.env_cfg, threshold=15, radius=130)
     agent1 = ControlledAgent('player_1', env.env_cfg, threshold=15, radius=130)
-    interact(env, {'player_0': agent0, 'player_1': agent1}, num_steps, seed=seed)
+    interact(env, {'player_0': agent0, 'player_1': agent1},
+             num_steps, seed=seed)

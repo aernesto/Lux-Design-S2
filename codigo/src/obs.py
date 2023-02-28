@@ -8,7 +8,8 @@ from space import CartesianPoint
 from collections import namedtuple
 
 RobotId = namedtuple("RobotId", "unit_id type", module=__name__)
-PlantAssignment = namedtuple("PlantAssignment", "unit_id pos", module=__name__)
+PlantId = namedtuple("PlantId", "unit_id pos", module=__name__)
+PlantAssignment = namedtuple("PlantAssignment", "unit_id pos tile", module=__name__)
 
 # TODO: Not sure whether below line is good practice
 ENV_CONFIG = EnvConfig()
@@ -100,7 +101,7 @@ class CenteredObservation:
 
     @property
     def factory_ids(self):
-        return [PlantAssignment(k, CartesianPoint(*v['pos'], self.board_length)) for k, v in self.my_factories.items()]
+        return [PlantId(k, CartesianPoint(*v['pos'], self.board_length)) for k, v in self.my_factories.items()]
 
     @property
     def my_heavy_units(self):
@@ -258,7 +259,7 @@ class FactoryCenteredObservation(CenteredObservation):
 
     @property
     def myself(self):
-        return PlantAssignment(self.unit_id, self.pos)
+        return PlantId(self.unit_id, self.pos)
 
     @property
     def state(self):

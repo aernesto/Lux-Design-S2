@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import logging
-from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredObservation, PlantAssignment
+from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredObservation, PlantId
 from luxai_s2.env import EnvConfig
 import numpy as np
+from codetiming import Timer
 import networkx as nx
-from typing import Sequence
+from typing import Sequence, List, Tuple
 from space import CartesianPoint, xy_iter
+Array = np.ndarray
 
 
 def invert_dict(d):
@@ -57,11 +59,18 @@ def _pickup(amount, resource, repeat: int = 0, n: int = 1):
     ])
 
 
-def _move(direction, repeat: int = 0, n: int = 1):
+def _move(direction: str, repeat: int = 0, n: int = 1):
     return np.array([
         _TYPE[_MOVE], _DIRECTION[direction], _DEFAULT_RESOURCE,
         _DEFAULT_AMOUNT, repeat, n
     ])
+
+
+def flip_movement_queue(mv_queue: Sequence[Array]):
+    new_queue = []
+    for move in reversed(mv_queue):
+        new_queue.append(_move(_1[move[0]], *move[-2:]))
+    return new_queue
 
 
 def _dig(resource, repeat: int = 0, n: int = 1):
@@ -73,10 +82,14 @@ def _dig(resource, repeat: int = 0, n: int = 1):
 
 class MapPlanner:
     """Class that helps planning robot moves."""
+    class_id = 0
 
     def __init__(self, obs: CenteredObservation):
+        self.class_id += 1
         self.obs = obs
         self.network = self._build_network()
+        self.planner_timer = Timer(
+            f"MapPlanner_timer {self.class_id}", text="network operations: {:.2f}", logger=logging.info)
 
     @property
     def board_length(self):
@@ -139,10 +152,11 @@ class MapPlanner:
         return G
 
     def _nx_shortest_path(self, node1, node2, cost_type: str):
-        return nx.shortest_path(self.network,
-                                source=node1,
-                                target=node2,
-                                weight=cost_type)
+        with self.planner_timer:
+            return nx.shortest_path(self.network,
+                                    source=node1,
+                                    target=node2,
+                                    weight=cost_type)
 
     def _action_translator(self, dx, dy):
         if dx == 1 and dy == 0:
@@ -174,7 +188,11 @@ class MapPlanner:
             previous_point = point
         return actions
 
-    def resources_radial_count(self, center: CartesianPoint, radius: float):
+    def resources_radial_count(
+            self,
+            center: CartesianPoint,
+            radius: float
+    ) -> Tuple[int, List[CartesianPoint], int, List[CartesianPoint]]:
         """Count resources in radius"""
         # get all points within radius
         new_graph = nx.generators.ego_graph(self.network,
@@ -182,15 +200,20 @@ class MapPlanner:
                                             radius=radius,
                                             distance='heavy_weight')
 
-        count = 0
+        ice_count, ore_count = 0, 0
+        ice_set, ore_set = [], []
         # loop over them and count
         for node in new_graph.nodes:
-            count += self.ice[node.x, node.y]
-            count += self.ore[node.x, node.y]
+            if self.ice[node.x, node.y]:
+                ice_count += 1
+                ice_set.append(node)
+            if self.ore[node.x, node.y]:
+                ore_count += 1
+                ore_set.append(node)
 
-        return count
-    
-    def rank_factories_by_distance_from(self, ref: CartesianPoint, cost_type: str):
+        return ice_count, ice_set, ore_count, ore_set
+
+    def rank_factories_by_distance_from(self, ref: CartesianPoint, cost_type: str) -> Array:
         """Ranks factories by (cost_type)-distance to reference location.
 
         Args:
@@ -198,9 +221,9 @@ class MapPlanner:
             cost_type (str): _description_
 
         Returns:
-            _type_: _description_
+            Array: structured array of plants
         """
-        #TODO: see if a cache of distances can be built lazily
+        # TODO: see if a cache of distances can be built lazily
         factory_list = []  # will contain tuples to build structured numpy array
         for fac in self.obs.factory_ids:
             best_distance = np.inf
@@ -208,14 +231,15 @@ class MapPlanner:
             for tile in fac.pos.surrounding_neighbors:
                 dist_to_tile = nx.path_weight(
                     self.network,
-                    nx.shortest_path(self.network, ref, tile, weight=cost_type),
+                    nx.shortest_path(self.network, ref,
+                                     tile, weight=cost_type),
                     weight=cost_type
-                    )
+                )
                 if dist_to_tile < best_distance:
                     best_distance = dist_to_tile
                     best_tile = tile
             factory_list.append((fac, best_tile, best_distance))
-        dtype = [('fac', PlantAssignment), ('tile', CartesianPoint), ('dist', float)]
+        dtype = [('fac', PlantId), ('tile', CartesianPoint), ('dist', float)]
         a = np.array(factory_list, dtype=dtype)  # create a structured array
         return np.sort(a, order='dist')
 
@@ -229,32 +253,38 @@ class RobotEnacter:
         self.cost_type = self.obs.my_type.lower() + '_weight'
         logging.debug('RobotEnacter.cost_type={}'.format(self.cost_type))
 
-    def compress_queue(self, q):
+    def compress_queue(self, q, repeat: bool = False):
         new_queue = []
 
         original = q[0].copy()
         new_action = original.copy()
         for i, action in enumerate(q[1:]):
-            try:
-                (original == action).all()
-            except AttributeError:
-                logging.debug('--debug from RobotEnacter.compress_queue')
-                logging.debug('original={}'.format(original))
-                logging.debug('action={}'.format(action))
-                logging.debug('--END debug from RobotEnacter.compress_queue')
-                raise
             if (original == action).all():
                 new_action[5] += 1
             else:
+                new_action[4] = repeat
                 new_queue.append(new_action)
                 new_action = action.copy()
                 original = action.copy()
                 if i == len(q) - 2:
+                    new_action[4] = repeat
                     new_queue.append(new_action)
         return new_queue
 
-    def ice_cycle(self, ice_loc):
+    def dig_cycle(
+            self,
+            ice_loc: CartesianPoint,
+            cycle_start_pos: CartesianPoint,
+            repeat: bool = True,
+            dig_n: int = 5
+    ):
         logging.debug('--debug from RobotEnacter.ice_cycle')
+
+        # TODO: go to start
+        start = self.planner._nx_shortest_path(
+            self.obs.pos, cycle_start_pos, cost_type=self.cost_type)
+        start = self.planner.nx_path_to_action_sequence(start)
+        start = self.compress_queue(start, repeat=False)
 
         # get shortest path from robot to ice
         go_nx_path = self.planner._nx_shortest_path(self.obs.pos,
@@ -263,21 +293,22 @@ class RobotEnacter:
         logging.debug('robot pos={} ice_loc={}'.format(self.obs.pos, ice_loc))
 
         # translate path to action queue
-        queue = self.planner.nx_path_to_action_sequence(go_nx_path)
+        go_nx_path = self.planner.nx_path_to_action_sequence(go_nx_path)
+        go_nx_path = self.compress_queue(go_nx_path, repeat=True)
         logging.debug('go path={}'.format(queue))
 
         # append dig action
         # TODO: factor in power cost in below logic
-        amount_to_dig = self.obs.ice_capacity
-        _n = amount_to_dig // self.obs.dig_yield
-        _repeat = False
-        queue.append(_dig(_ICE, _repeat, _n))
+        _repeat = True
+        dig_queue = [_dig(_ICE, _repeat, dig_n)]
         logging.debug('go + dig={}'.format(queue))
 
         # append return path
-        return_nx_path = self.planner._nx_shortest_path(
-            ice_loc, self.obs.pos, cost_type=self.cost_type)
-        queue += self.planner.nx_path_to_action_sequence(return_nx_path)
+        # TODO: check correctness of next two lines
+        # return_nx_path = self.planner._nx_shortest_path(ice_loc, self.obs.pos, cost_type=self.cost_type)
+        return_nx_path = flip_movement_queue(go_nx_path)
+
+        queue = start + go_nx_path + dig_queue + return_nx_path
         logging.debug('go + pickup + return={}'.format(queue))
 
         queue = self.compress_queue(queue)
