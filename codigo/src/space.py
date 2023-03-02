@@ -170,6 +170,9 @@ class ConnectedComponent:
     def __repr__(self):
         return 'connected component=' + repr(self.content)
 
+    def __iter__(self):
+        return iter(self.content)
+
     def touches_point(self, point: CartesianPoint):
         if point in self.content:
             return True
