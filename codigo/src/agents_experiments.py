@@ -53,6 +53,7 @@ class ControlledAgent:
                 'metal': self.env_cfg.ROBOTS['LIGHT'].METAL_COST,
                 'power': self.env_cfg.ROBOTS['LIGHT'].POWER_COST
             },
+            'rubble': np.zeros((self.board_length, self.board_length), int)
         })
 
     def _tile_iterator(self, center: CartesianPoint):
@@ -99,11 +100,20 @@ class ControlledAgent:
                 }
         # TODO: clean up dead plants and figure out what to do with assigned units
 
+    def _update_rubble_map(self):
+        old = self.oracle['rubble'].copy()
+        new = self.oracle['obs'].rubble_map.copy()
+        logging.debug("Total rubble diff ={}".format((old - new).sum()))
+        #TODO: do something here?
+        self.oracle['rubble'] = new
+
+
     def update_oracle(self, obs: CenteredObservation):
         """Update oracle at each call of act method."""
         self._update_plant_info(obs)
         self.oracle['dobs'] = obs.dict_obj
         self.oracle['obs'] = obs
+        self._update_rubble_map()
         # old_plan = deepcopy(self.oracle['planned_actions'])
         self.oracle['planned_actions'] = dict()  # reset action plan
         fac_ids = self.oracle['obs'].factory_ids
@@ -274,14 +284,14 @@ class ControlledAgent:
                     # TODO: let's make this robot a Kamikaze?
                     pass
                 else:
-                    actions[self.robot.unit_id] = enacter.dig_cycle(
+                    actions[robot.unit_id] = enacter.dig_cycle(
                     target_tile, 
                     assigned_plant.tile, 
                     repeat=True, 
                     dig_n=5
                     )
             else:
-                actions[self.robot.unit_id] = enacter.dig_cycle(
+                actions[robot.unit_id] = enacter.dig_cycle(
                     target_tile, 
                     assigned_plant.tile, 
                     repeat=True, 
@@ -324,6 +334,7 @@ class ControlledAgent:
             if factories_to_place > 0 and my_turn_to_place:
                 with self.choose_loc_timer:
                     spawn_loc, ice, ore = self.map_spawner.choose_spawn_loc()
+                breakpoint()
                 self.oracle['plant_resource_nghb']['ice'] = ice
                 self.oracle['plant_resource_nghb']['ore'] = ore
                 return dict(spawn=spawn_loc, metal=150, water=150)
@@ -344,8 +355,11 @@ class ControlledAgent:
             self.monitor(step, dobs)
         observation = CenteredObservation(dobs, self.player)
         self.update_oracle(observation)
+        breakpoint()
         self.factory_actions()  # will update self.oracle['planned_actions']
+        breakpoint()
         self.robot_actions()  # will update self.oracle['planned_actions']
+        breakpoint()
         return self.oracle['planned_actions']
 
     def monitor(self, step, dobs):
@@ -443,7 +457,7 @@ def interact(env,
     interact_timer = Timer(
         f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logging.info)
     # iterate until phase 1 ends
-    while env.state.real_env_steps < 0:
+    while env.state.real_env_steps < 0: 
         if step >= steps:
             break
         actions = {}

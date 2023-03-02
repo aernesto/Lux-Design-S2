@@ -51,8 +51,12 @@ _4 = repeat
 _5 = n
 """
 
+def _transfer(amount: int, resource: str, repeat: int = 0, n: int = 1):
+    return np.array([
+        _TYPE[_TRANSFER], _DEFAULT_DIRECTION, _RESOURCE[resource], amount, repeat, n
+    ])
 
-def _pickup(amount, resource, repeat: int = 0, n: int = 1):
+def _pickup(amount: int, resource: str, repeat: int = 0, n: int = 1):
     return np.array([
         _TYPE[_PICKUP], _DEFAULT_DIRECTION, _RESOURCE[resource], amount,
         repeat, n
@@ -274,9 +278,10 @@ class RobotEnacter:
     def dig_cycle(
             self,
             ice_loc: CartesianPoint,
+            resource: str,
             cycle_start_pos: CartesianPoint,
             repeat: bool = True,
-            dig_n: int = 5
+            dig_n: int = 5,
     ):
         logging.debug('--debug from RobotEnacter.ice_cycle')
 
@@ -295,21 +300,27 @@ class RobotEnacter:
         # translate path to action queue
         go_nx_path = self.planner.nx_path_to_action_sequence(go_nx_path)
         go_nx_path = self.compress_queue(go_nx_path, repeat=True)
-        logging.debug('go path={}'.format(queue))
+        logging.debug('go path={}'.format(go_nx_path))
 
         # append dig action
         # TODO: factor in power cost in below logic
         _repeat = True
         dig_queue = [_dig(_ICE, _repeat, dig_n)]
-        logging.debug('go + dig={}'.format(queue))
+        logging.debug('go + dig={}'.format(dig_queue))
 
         # append return path
         # TODO: check correctness of next two lines
         # return_nx_path = self.planner._nx_shortest_path(ice_loc, self.obs.pos, cost_type=self.cost_type)
         return_nx_path = flip_movement_queue(go_nx_path)
 
-        queue = start + go_nx_path + dig_queue + return_nx_path
-        logging.debug('go + pickup + return={}'.format(queue))
+        # append transfer resource action
+        transfer_queue = [_transfer(resource), 100]
+
+        # append pickup action
+        pickup_queue = [_pickup(500, _POWER, repeat=_repeat)]
+
+        queue = start + go_nx_path + dig_queue + return_nx_path + pickup_queue
+        logging.debug('start + go + dig + return + pickup={}'.format(queue))
 
         queue = self.compress_queue(queue)
 
