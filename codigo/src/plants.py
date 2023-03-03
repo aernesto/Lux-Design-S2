@@ -56,7 +56,7 @@ class GmmMapSpawner:
                          ore_coef: float = .05):
         # ICE
         ice = obs.ice_map
-        ice_train = np.vstack(ice.T.nonzero()).T
+        ice_train = np.vstack(ice.nonzero()).T
         # TODO: include logic to avoid spawning too much in same area
         # TODO: the 'factories_to_place' below currently changes at each call
         clf_ice = GaussianMixture(
@@ -69,7 +69,7 @@ class GmmMapSpawner:
 
         # ORE
         ore = obs.ore_map
-        ore_train = np.vstack(ore.T.nonzero()).T
+        ore_train = np.vstack(ore.nonzero()).T
         clf_ore = GaussianMixture(
             n_components=len(ore_train),
             covariance_type="spherical",
@@ -83,9 +83,9 @@ class GmmMapSpawner:
         rubble[ice.nonzero()] = 0
         threshold = 0  # TODO: don't hard-code this value
         rubble[rubble <= threshold] = 0
-        rubble_train = np.vstack(np.where(rubble.T == 0)).T
+        rubble_train = np.vstack(np.where(rubble == 0)).T
         if len(rubble_train) == 0:
-            rubble_train = np.vstack(np.where(rubble.T <= 5)).T
+            rubble_train = np.vstack(np.where(rubble <= 5)).T
 
         clf_rubble = GaussianMixture(
             n_components=len(rubble_train),

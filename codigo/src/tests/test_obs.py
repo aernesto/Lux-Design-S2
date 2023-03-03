@@ -1,16 +1,16 @@
-import sys
-import numpy as np
-sys.path.append('..')
-import unittest
-from luxai_s2.env import LuxAI_S2
-from space import CartesianPoint
 from obs import (RobotId,
                  PlantId,
                  PlantAssignment,
                  flip_name,
                  CenteredObservation,
-                 RobotCenteredObservation, 
+                 RobotCenteredObservation,
                  FactoryCenteredObservation)
+from space import CartesianPoint
+from luxai_s2.env import LuxAI_S2
+import unittest
+import sys
+import numpy as np
+sys.path.append('..')
 
 
 class TestCenteredObservation(unittest.TestCase):
@@ -19,9 +19,9 @@ class TestCenteredObservation(unittest.TestCase):
         self.env = LuxAI_S2()
         self.obs_dict = self.env.reset(seed=5)
         self.obs = CenteredObservation(
-            self.obs_dict[self.player_name], 
+            self.obs_dict[self.player_name],
             self.player_name
-            )
+        )
 
     def test_RobotId(self):
         rid = RobotId('unit_23', 'HEAVY')
@@ -49,11 +49,11 @@ class TestCenteredObservation(unittest.TestCase):
         self.assertEqual(pid.unit_id, fname)
         self.assertEqual(pid, PlantAssignment(fname, pos, pos.right_neighbor))
         self.assertNotEqual(
-            pid, 
+            pid,
             PlantAssignment(fname, pos.bottom_neighbor, pos.right_neighbor)
-            )
+        )
         self.assertEqual(len(pid), 3)
-    
+
     def test_flip_name(self):
         self.assertEqual(flip_name('player_0'), 'player_1')
         self.assertEqual(flip_name('player_1'), 'player_0')
@@ -70,6 +70,7 @@ class TestCenteredObservation(unittest.TestCase):
         self.assertTrue((obs.ice_map == obs.board['ice']).all())
         self.assertTrue(obs.ice_map.sum() > 2)
         self.assertEqual(obs.opponent, flip_name(self.player_name))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -508,6 +508,29 @@ def interact(env,
         return first_obs, obs
 
 
+def step_interact(env, agents, steps, map_seed):
+    # reset our env
+    obs = env.reset(seed=map_seed)
+    np.random.seed(0)
+    step = 0
+
+    while env.state.real_env_steps < 0:
+        actions = {}
+        for player in env.agents:
+            o = obs[player]
+            actions[player] = agents[player].early_setup(step, o)
+        step += 1
+        yield env.step(actions)
+
+    while step < steps:
+        actions = {}
+        for player in env.agents:
+            o = obs[player]
+            actions[player] = agents[player].act(step, o)
+        step += 1
+        yield env.step(actions)
+
+
 if __name__ == "__main__":
     import sys
     logging.basicConfig(filename="module_log.log", level=logging.INFO)
