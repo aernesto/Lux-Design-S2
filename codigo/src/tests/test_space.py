@@ -1,7 +1,8 @@
+import unittest
+from space import CartesianPoint, ConnectedComponent, xy_iter
 import sys
 sys.path.append('..')
-from space import CartesianPoint, ConnectedComponent, xy_iter
-import unittest
+
 
 class TestSpace(unittest.TestCase):
     def setUp(self):
@@ -9,8 +10,7 @@ class TestSpace(unittest.TestCase):
         self.len = 48
         self.point = CartesianPoint(self.x, self.y, self.len)
         self.top = CartesianPoint(self.x, self.y - 1, self.len)
-        self.right= CartesianPoint(self.x + 1, self.y, self.len)
-
+        self.right = CartesianPoint(self.x + 1, self.y, self.len)
 
     def test_xy_iter(self):
         points = {
@@ -20,7 +20,6 @@ class TestSpace(unittest.TestCase):
             CartesianPoint(1, 1, 2),
         }
         self.assertTrue(all(point in points for point in xy_iter(2)))
-
 
     def test_cartesian_point(self):
         self.assertTrue(self.point.at_left_edge)
@@ -41,7 +40,8 @@ class TestSpace(unittest.TestCase):
         self.assertEqual(len(all_neighbors), 3)
         self.assertEqual(len(surr_neighbors), 5)
 
-        self.assertIn(self.top.top_neighbor, self.point.plant_first_lichen_tiles)
+        self.assertIn(self.top.top_neighbor,
+                      self.point.plant_first_lichen_tiles)
 
     def test_conn_component(self):
         comp = ConnectedComponent([self.point, self.top])
@@ -58,7 +58,7 @@ class TestSpace(unittest.TestCase):
         newcomp = ConnectedComponent([self.point, self.top])
         self.assertEqual(comp, newcomp)
         self.assertNotEqual(comp, new)
-        
 
-if __name__ == '__main__':   
+
+if __name__ == '__main__':
     unittest.main()
