@@ -280,7 +280,6 @@ class ControlledAgent:
                     target_tile, 
                     resource_type,
                     assigned_plant.tile, 
-                    repeat=True, 
                     dig_n=5
                     )
             else:
@@ -288,7 +287,6 @@ class ControlledAgent:
                     target_tile, 
                     resource_type,
                     assigned_plant.tile, 
-                    repeat=True, 
                     dig_n=5
                     )
     def _flip_robot_resource_assignment(self, rid: RobotId):

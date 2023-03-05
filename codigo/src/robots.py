@@ -6,7 +6,7 @@ import numpy as np
 from codetiming import Timer
 from functools import reduce
 import networkx as nx
-from typing import Sequence, List, Tuple
+from typing import Sequence, List, Tuple, Optional
 from space import CartesianPoint, xy_iter
 Array = np.ndarray
 
@@ -46,7 +46,9 @@ _0 = {
 _TYPE = invert_dict(_0)
 """_TYPE is a dict mapping action string to corresponding int."""
 
+
 def _act_str2int(s: str): return _TYPE[s]
+
 
 def _act_int2str(i: int): return _0[i]
 
@@ -67,28 +69,40 @@ _MIRROR_DIRECTIONS = {
     'down': 'up'
 }
 
+
 def _dir_str2int(s: str): return _DIRECTION[s]
 def _dir_int2str(i: int): return _1[i]
+
 
 _DEFAULT_DIRECTION: int = _DIRECTION[_CENTER]
 
 _ICE, _ORE, _WATER, _METAL, _POWER = 'ice', 'ore', 'water', 'metal', 'power'
+
 _2 = {i: s for i, s in enumerate([_ICE, _ORE, _WATER, _METAL, _POWER])}
+"""_2 is a dict mapping integers to resource strings"""
+
 _RESOURCE = invert_dict(_2)
+"""_RESOURCE is a dict mapping resource strings to integers"""
 
 _DEFAULT_RESOURCE = 0
 _DEFAULT_AMOUNT = 1
 
 _REPEAT = 4
+_N = 5
+
 """
 _3 = amount
-_5 = n
 """
 
 
 def _transfer(amount: int, resource: str, direction: str = _CENTER, repeat: int = 0, n: int = 1):
     return np.array([
-        _act_str2int(_TRANSFER), _dir_str2int(direction), _RESOURCE[resource], amount, repeat, n
+        _act_str2int(_TRANSFER), 
+        _dir_str2int(direction), 
+        _RESOURCE[resource], 
+        amount, 
+        repeat, 
+        n
     ])
 
 
@@ -120,9 +134,10 @@ def flip_movement_queue(mv_queue: Sequence[Array]):
     return new_queue
 
 
-def _dig(resource, repeat: int = 0, n: int = 1):
+def _dig(resource: str, repeat: int = 0, n: int = 1):
     return np.array([
-        _act_str2int(_DIG), _DEFAULT_DIRECTION, _RESOURCE[resource], _DEFAULT_AMOUNT,
+        _act_str2int(
+            _DIG), _DEFAULT_DIRECTION, _RESOURCE[resource], _DEFAULT_AMOUNT,
         repeat, n
     ])
 
@@ -142,10 +157,32 @@ def compress_queue(q: Sequence[Array]):
     return list(reduce(combine, q, []))
 
 
-def format_repeat(seq: Sequence[Array], rep_val: int):
+def format_repeat(
+        seq: Sequence[Array], 
+        rep_val: Optional[int], 
+        omit_ix: Optional[Sequence[int]] = None
+        ):
+    """Populate the repeat index of all actions in queue.
+
+    Args:
+        seq (Sequence[Array]): queue to modify (after copying)
+        rep_val (Optional[int]): If a fixed value, will assign it to all actions 
+               in queue. If None, will set the repeat value to the n-value.
+        omit_ix (Optional[Sequence[int]]): indices in queue for which to leave repeat 
+               unchanged. 
+    Returns:
+        List[Array]: queue
+    """
     new_seq = [arr.copy() for arr in seq]
-    for arr in new_seq:
-        arr[_REPEAT] = rep_val
+    if omit_ix is None:
+        omit_ix = {}
+    for ix, arr in enumerate(new_seq):
+        if ix in omit_ix:
+            continue
+        if rep_val is None:
+            arr[_REPEAT] = arr[_N]
+        else:
+            arr[_REPEAT] = rep_val
     return new_seq
 
 
@@ -326,7 +363,6 @@ class RobotEnacter:
             target_loc: CartesianPoint,
             resource: str,
             cycle_start_pos: CartesianPoint,
-            repeat: bool = True,
             dig_n: int = 5,
     ):
         logging.debug('--debug from RobotEnacter.ice_cycle')
@@ -347,12 +383,12 @@ class RobotEnacter:
         # translate path to action queue
         go_nx_path = self.planner.nx_path_to_action_sequence(go_nx_path)
         go_nx_path = compress_queue(go_nx_path)
-        go_nx_path = format_repeat(go_nx_path, repeat)
+        go_nx_path = format_repeat(go_nx_path, rep_val=None)
         logging.debug('go path={}'.format(go_nx_path))
 
         # append dig action
         # TODO: factor in power cost in below logic
-        dig_queue = [_dig(_ICE, repeat, dig_n)]
+        dig_queue = [_dig(resource, dig_n, dig_n)]
         logging.debug('go + dig={}'.format(dig_queue))
 
         # append return path
@@ -361,10 +397,11 @@ class RobotEnacter:
         return_nx_path = flip_movement_queue(go_nx_path)
 
         # append transfer resource action
-        transfer_queue = [_transfer(100, resource, repeat=repeat, n=1)]
+        transfer_queue = [_transfer(self.obs.state['cargo'][resource], resource, repeat=1, n=1)]
 
         # append pickup action
-        pickup_queue = [_pickup(500, _POWER, repeat=repeat)]
+        # TODO: only pickup what is necessary for next cycle
+        pickup_queue = [_pickup(500, _POWER, repeat=1)]
 
         queue = start + go_nx_path + dig_queue
         queue += return_nx_path + transfer_queue + pickup_queue
