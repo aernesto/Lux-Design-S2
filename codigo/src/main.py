@@ -8,9 +8,9 @@ from agents_experiments import ControlledAgent
 from lux.config import EnvConfig
 from lux.kit import process_obs, process_action
 logging.basicConfig(
-filename='/home/adrian_admin/prog/kaggle/lux-ai-2/Lux-Design-S2/data/experiments/adrian/main_v2_37.log',
-level=logging.WARNING
-)
+    filename=
+    '/home/adrian_admin/prog/kaggle/lux-ai-2/Lux-Design-S2/data/experiments/adrian/main_4Mar2023.log',
+    level=logging.INFO)
 agent_dict = dict(
 )  # store potentially multiple dictionaries as kaggle imports code directly
 agent_prev_obs = dict()
@@ -27,12 +27,10 @@ def agent_fn(observation, configurations):
     remainingOverageTime = observation.remainingOverageTime
     if step == 0:
         env_cfg = EnvConfig.from_dict(configurations["env_cfg"])
-        agent_dict[player] = ControlledAgent(
-        player,
-        env_cfg,
-        radius=130,
-        threshold=15
-        )
+        agent_dict[player] = ControlledAgent(player,
+                                             env_cfg,
+                                             radius=130,
+                                             threshold=15)
         agent_prev_obs[player] = dict()
     agent = agent_dict[player]
     obs = process_obs(player, agent_prev_obs[player], step,

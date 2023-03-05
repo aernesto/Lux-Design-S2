@@ -92,8 +92,8 @@ class ControlledAgent:
                 }
                 # create its tile and resource iterators
                 self.tile_iterator[fac_id] = self._tile_iterator(fac_id.pos)
-                ice_nghb = self.oracle['plant_resource_nghb']['ice']
-                ore_nghb = self.oracle['plant_resource_nghb']['ore']
+                ice_nghb = self.oracle['plant_resource_nghb'][fac_id.pos]['ice']
+                ore_nghb = self.oracle['plant_resource_nghb'][fac_id.pos]['ore']
                 self.resource_iter[fac_id] = {
                     'ice': self._resource_iterator(ice_nghb),
                     'ore': self._resource_iterator(ore_nghb),
@@ -263,22 +263,14 @@ class ControlledAgent:
             enacter = RobotEnacter(robot, self.env_cfg)
 
             try:
-                target_tile = next(
-                        self.resource_iter[plant][
-                            # a resource type
-                            self.oracle['robot_to_resource'][robot.myself]
-                            ]
-                    )
+                resource_type = self.oracle['robot_to_resource'][robot.myself]
+                target_tile = next(self.resource_iter[plant][resource_type])
             except StopIteration:
                 # try other resource
                 self._flip_robot_resource_assignment(robot.myself)
                 try:
-                    target_tile = next(
-                        self.resource_iter[plant][
-                            # a resource type
-                            self.oracle['robot_to_resource'][robot.myself]
-                            ]
-                    )
+                    resource_type = self.oracle['robot_to_resource'][robot.myself]
+                    target_tile = next(self.resource_iter[plant][resource_type])
                 except StopIteration:
                     # this is not going well
                     # TODO: let's make this robot a Kamikaze?
@@ -286,6 +278,7 @@ class ControlledAgent:
                 else:
                     actions[robot.unit_id] = enacter.dig_cycle(
                     target_tile, 
+                    resource_type,
                     assigned_plant.tile, 
                     repeat=True, 
                     dig_n=5
@@ -293,6 +286,7 @@ class ControlledAgent:
             else:
                 actions[robot.unit_id] = enacter.dig_cycle(
                     target_tile, 
+                    resource_type,
                     assigned_plant.tile, 
                     repeat=True, 
                     dig_n=5
@@ -334,9 +328,11 @@ class ControlledAgent:
             if factories_to_place > 0 and my_turn_to_place:
                 with self.choose_loc_timer:
                     spawn_loc, ice, ore = self.map_spawner.choose_spawn_loc()
-                breakpoint()
-                self.oracle['plant_resource_nghb']['ice'] = ice
-                self.oracle['plant_resource_nghb']['ore'] = ore
+
+                center = CartesianPoint(*spawn_loc)
+                odict = self.oracle['plant_resource_nghb']
+                # breakpoint()
+                odict[center] = {'ice': ice, 'ore': ore}
                 return dict(spawn=spawn_loc, metal=150, water=150)
             return dict()
 
@@ -355,11 +351,11 @@ class ControlledAgent:
             self.monitor(step, dobs)
         observation = CenteredObservation(dobs, self.player)
         self.update_oracle(observation)
-        breakpoint()
+        # breakpoint()
         self.factory_actions()  # will update self.oracle['planned_actions']
-        breakpoint()
+        # breakpoint()
         self.robot_actions()  # will update self.oracle['planned_actions']
-        breakpoint()
+        # breakpoint()
         return self.oracle['planned_actions']
 
     def monitor(self, step, dobs):
@@ -475,6 +471,7 @@ def interact(env,
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
             logging.debug('{step}'.format(step=step))
+        logging.info("Total time stats:{}".format(Timer.timers))
 
     done = False
 
@@ -501,6 +498,7 @@ def interact(env,
         inner_counter += 1
         if break_at_first_action and inner_counter == 2:
             break
+        logging.info("Total time stats:{}".format(Timer.timers))
     if animate_:
         logging.info('writing {animate_}'.format(animate_=animate_))
         return animate(imgs, filename=animate_)
@@ -520,7 +518,9 @@ def step_interact(env, agents, steps, map_seed):
             o = obs[player]
             actions[player] = agents[player].early_setup(step, o)
         step += 1
-        yield env.step(actions)
+        obs, rewards, dones, infos = env.step(actions)
+        logging.info("Total time stats:{}".format(Timer.timers))
+        yield obs, rewards, dones, infos, step, agents
 
     while step < steps:
         actions = {}
@@ -528,8 +528,9 @@ def step_interact(env, agents, steps, map_seed):
             o = obs[player]
             actions[player] = agents[player].act(step, o)
         step += 1
-        yield env.step(actions)
-
+        obs, rewards, dones, infos = env.step(actions)
+        logging.info("Total time stats:{}".format(Timer.timers))
+        yield obs, rewards, dones, infos, step, agents
 
 if __name__ == "__main__":
     import sys

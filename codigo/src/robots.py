@@ -4,6 +4,7 @@ from obs import CenteredObservation, RobotCenteredObservation, FactoryCenteredOb
 from luxai_s2.env import EnvConfig
 import numpy as np
 from codetiming import Timer
+from functools import reduce
 import networkx as nx
 from typing import Sequence, List, Tuple
 from space import CartesianPoint, xy_iter
@@ -15,11 +16,22 @@ def invert_dict(d):
 
 
 _MOVE = 'move'
+"""String representing movement in this module."""
+
 _TRANSFER = 'transfer _3 amount of _RESOURCE'
+"""String representing transfer in this module."""
+
 _PICKUP = 'pickup _3 amount of _RESOURCE'
+"""String representing pickup in this module."""
+
 _DIG = 'dig'
+"""String representing dig in this module."""
+
 _SELF_DESTRUCT = 'self-destruct'
+"""String representing self-destruct in this module."""
+
 _RECHARGE = 'recharge X'
+"""String representing recharge in this module."""
 
 _0 = {
     0: _MOVE,
@@ -29,13 +41,36 @@ _0 = {
     4: _SELF_DESTRUCT,
     5: _RECHARGE
 }
+"""_0 is a dict mapping integer index to action string."""
 
 _TYPE = invert_dict(_0)
+"""_TYPE is a dict mapping action string to corresponding int."""
+
+def _act_str2int(s: str): return _TYPE[s]
+
+def _act_int2str(i: int): return _0[i]
+
 
 _CENTER, _UP, _RIGHT, _DOWN, _LEFT = 'center', 'up', 'right', 'down', 'left'
+
 _1 = {i: s for i, s in enumerate([_CENTER, _UP, _RIGHT, _DOWN, _LEFT])}
+"""_1 is a dict mapping integers to direction strings"""
+
 _DIRECTION = invert_dict(_1)
-_DEFAULT_DIRECTION = _DIRECTION[_UP]
+"""_DIRECTION is a dict mapping direction strings to integers"""
+
+_MIRROR_DIRECTIONS = {
+    'center': 'center',
+    'left': 'right',
+    'right': 'left',
+    'up': 'down',
+    'down': 'up'
+}
+
+def _dir_str2int(s: str): return _DIRECTION[s]
+def _dir_int2str(i: int): return _1[i]
+
+_DEFAULT_DIRECTION: int = _DIRECTION[_CENTER]
 
 _ICE, _ORE, _WATER, _METAL, _POWER = 'ice', 'ore', 'water', 'metal', 'power'
 _2 = {i: s for i, s in enumerate([_ICE, _ORE, _WATER, _METAL, _POWER])}
@@ -43,29 +78,30 @@ _RESOURCE = invert_dict(_2)
 
 _DEFAULT_RESOURCE = 0
 _DEFAULT_AMOUNT = 1
-_DEFAULT_REPEAT = 0
-_DEFAULT_N = 1
+
+_REPEAT = 4
 """
 _3 = amount
-_4 = repeat
 _5 = n
 """
 
-def _transfer(amount: int, resource: str, repeat: int = 0, n: int = 1):
+
+def _transfer(amount: int, resource: str, direction: str = _CENTER, repeat: int = 0, n: int = 1):
     return np.array([
-        _TYPE[_TRANSFER], _DEFAULT_DIRECTION, _RESOURCE[resource], amount, repeat, n
+        _act_str2int(_TRANSFER), _dir_str2int(direction), _RESOURCE[resource], amount, repeat, n
     ])
+
 
 def _pickup(amount: int, resource: str, repeat: int = 0, n: int = 1):
     return np.array([
-        _TYPE[_PICKUP], _DEFAULT_DIRECTION, _RESOURCE[resource], amount,
+        _act_str2int(_PICKUP), _DEFAULT_DIRECTION, _RESOURCE[resource], amount,
         repeat, n
     ])
 
 
 def _move(direction: str, repeat: int = 0, n: int = 1):
     return np.array([
-        _TYPE[_MOVE], _DIRECTION[direction], _DEFAULT_RESOURCE,
+        _act_str2int(_MOVE), _dir_str2int(direction), _DEFAULT_RESOURCE,
         _DEFAULT_AMOUNT, repeat, n
     ])
 
@@ -73,15 +109,44 @@ def _move(direction: str, repeat: int = 0, n: int = 1):
 def flip_movement_queue(mv_queue: Sequence[Array]):
     new_queue = []
     for move in reversed(mv_queue):
-        new_queue.append(_move(_1[move[0]], *move[-2:]))
+        if move[0] != 0:
+            raise ValueError(f"{move} is not a movement array")
+        new_move = move.copy()
+        old_move_direction_int = move[1]
+        old_move_direction_str = _dir_int2str(old_move_direction_int)
+        new_move_direction_str = _MIRROR_DIRECTIONS[old_move_direction_str]
+        new_move[1] = _dir_str2int(new_move_direction_str)
+        new_queue.append(new_move)
     return new_queue
 
 
 def _dig(resource, repeat: int = 0, n: int = 1):
     return np.array([
-        _TYPE[_DIG], _DEFAULT_DIRECTION, _RESOURCE[resource], _DEFAULT_AMOUNT,
+        _act_str2int(_DIG), _DEFAULT_DIRECTION, _RESOURCE[resource], _DEFAULT_AMOUNT,
         repeat, n
     ])
+
+
+def compress_queue(q: Sequence[Array]):
+    def combine(old_list: Sequence, new_item: Array):
+        if len(old_list) == 0:
+            return [new_item]
+
+        last = old_list[-1]
+        if (new_item[:-1] == last[:-1]).all():
+            last[-1] += new_item[-1]
+        else:
+            old_list.append(new_item)
+        return old_list
+
+    return list(reduce(combine, q, []))
+
+
+def format_repeat(seq: Sequence[Array], rep_val: int):
+    new_seq = [arr.copy() for arr in seq]
+    for arr in new_seq:
+        arr[_REPEAT] = rep_val
+    return new_seq
 
 
 class MapPlanner:
@@ -93,7 +158,10 @@ class MapPlanner:
         self.obs = obs
         self.network = self._build_network()
         self.planner_timer = Timer(
-            f"MapPlanner_timer {self.class_id}", text="network operations: {:.2f}", logger=logging.info)
+            f"MapPlanner_timer {self.class_id}",
+            text="network operations: {:.2f}",
+            logger=None
+        )
 
     @property
     def board_length(self):
@@ -115,7 +183,7 @@ class MapPlanner:
         G = nx.MultiDiGraph()
         G.add_nodes_from(xy_iter(self.board_length))
         edges = []
-        for point in xy_iter(self.board_length):
+        for point in G.nodes:
             rb = self.rubble[point.x, point.y]
             factories = self.obs.my_factories
             for fac_id in factories:
@@ -145,13 +213,7 @@ class MapPlanner:
         enemy_plants_ = []
         for fd in self.obs.opp_factories.values():
             center = CartesianPoint(*fd['pos'])
-            enemy_plants_ += [
-                center, center.left_neighbor,
-                center.left_neighbor.top_neighbor, center.top_neighbor,
-                center.top_neighbor.right_neighbor, center.right_neighbor,
-                center.right_neighbor.bottom_neighbor, center.bottom_neighbor,
-                center.bottom_neighbor.left_neighbor
-            ]
+            enemy_plants_ += [center] + list(center.surrounding_neighbors)
         G.remove_nodes_from(enemy_plants_)
         return G
 
@@ -255,29 +317,13 @@ class RobotEnacter:
         self.conf = env_cfg
         self.planner = MapPlanner(self.obs)
         self.cost_type = self.obs.my_type.lower() + '_weight'
+        self.myself = self.obs.myself
+        self.pos = self.obs.pos
         logging.debug('RobotEnacter.cost_type={}'.format(self.cost_type))
-
-    def compress_queue(self, q, repeat: bool = False):
-        new_queue = []
-
-        original = q[0].copy()
-        new_action = original.copy()
-        for i, action in enumerate(q[1:]):
-            if (original == action).all():
-                new_action[5] += 1
-            else:
-                new_action[4] = repeat
-                new_queue.append(new_action)
-                new_action = action.copy()
-                original = action.copy()
-                if i == len(q) - 2:
-                    new_action[4] = repeat
-                    new_queue.append(new_action)
-        return new_queue
 
     def dig_cycle(
             self,
-            ice_loc: CartesianPoint,
+            target_loc: CartesianPoint,
             resource: str,
             cycle_start_pos: CartesianPoint,
             repeat: bool = True,
@@ -289,44 +335,52 @@ class RobotEnacter:
         start = self.planner._nx_shortest_path(
             self.obs.pos, cycle_start_pos, cost_type=self.cost_type)
         start = self.planner.nx_path_to_action_sequence(start)
-        start = self.compress_queue(start, repeat=False)
+        start = compress_queue(start)
 
         # get shortest path from robot to ice
         go_nx_path = self.planner._nx_shortest_path(self.obs.pos,
-                                                    ice_loc,
+                                                    target_loc,
                                                     cost_type=self.cost_type)
-        logging.debug('robot pos={} ice_loc={}'.format(self.obs.pos, ice_loc))
+        logging.debug('robot pos={} target_loc={}'.format(
+            self.obs.pos, target_loc))
 
         # translate path to action queue
         go_nx_path = self.planner.nx_path_to_action_sequence(go_nx_path)
-        go_nx_path = self.compress_queue(go_nx_path, repeat=True)
+        go_nx_path = compress_queue(go_nx_path)
+        go_nx_path = format_repeat(go_nx_path, repeat)
         logging.debug('go path={}'.format(go_nx_path))
 
         # append dig action
         # TODO: factor in power cost in below logic
-        _repeat = True
-        dig_queue = [_dig(_ICE, _repeat, dig_n)]
+        dig_queue = [_dig(_ICE, repeat, dig_n)]
         logging.debug('go + dig={}'.format(dig_queue))
 
         # append return path
         # TODO: check correctness of next two lines
-        # return_nx_path = self.planner._nx_shortest_path(ice_loc, self.obs.pos, cost_type=self.cost_type)
+        # return_nx_path = self.planner._nx_shortest_path(target_loc, self.obs.pos, cost_type=self.cost_type)
         return_nx_path = flip_movement_queue(go_nx_path)
 
         # append transfer resource action
-        transfer_queue = [_transfer(resource), 100]
+        transfer_queue = [_transfer(100, resource, repeat=repeat, n=1)]
 
         # append pickup action
-        pickup_queue = [_pickup(500, _POWER, repeat=_repeat)]
+        pickup_queue = [_pickup(500, _POWER, repeat=repeat)]
 
-        queue = start + go_nx_path + dig_queue + return_nx_path + pickup_queue
+        queue = start + go_nx_path + dig_queue
+        queue += return_nx_path + transfer_queue + pickup_queue
         logging.debug('start + go + dig + return + pickup={}'.format(queue))
 
-        queue = self.compress_queue(queue)
+        # queue = compress_queue(queue)
 
         logging.debug('--END debug from RobotEnacter.ice_cycle')
 
         # TODO: avoid hard-coding queue length below
+        logging.info("""
+sending robot {} currently at position {}
+on an {} cycle with start tile {} and target tile {}
+Full compressed queue is {}
+""".format(self.myself, self.pos, resource, cycle_start_pos, target_loc, queue))
+        # breakpoint()
         return queue[:20]
 
 

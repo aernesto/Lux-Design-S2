@@ -113,7 +113,12 @@ class CenteredObservation:
 
     @property
     def my_team(self):
-        return self.dict_obj['teams'][self.my_player_name]
+        try:
+            # breakpoint()
+            return self.dict_obj['teams'][self.my_player_name]
+        except KeyError:
+            logging.error("PB with team dict:{}".format(self.dict_obj['teams']))
+            raise
 
     @property
     def opp_units(self):

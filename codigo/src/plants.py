@@ -80,7 +80,6 @@ class GmmMapSpawner:
 
         # RUBBLE
         rubble = obs.rubble_map.copy()
-        rubble[ice.nonzero()] = 0
         threshold = 0  # TODO: don't hard-code this value
         rubble[rubble <= threshold] = 0
         rubble_train = np.vstack(np.where(rubble == 0)).T
@@ -139,7 +138,7 @@ class ConnCompMapSpawner:
         self.original_obs = obs
         self.obs_ = None  # will get set by choose_spawn_loc
         self.planner = MapPlanner(self.original_obs)
-        self.rubble = self.original_obs.rubble_map
+        self.rubble = self.planner.rubble
         self.board_length = len(self.rubble)
         self.total_factories = self.original_obs.my_team['factories_to_place']
         self.thr = threshold
