@@ -178,7 +178,6 @@ class ConnCompMapSpawner:
         try:
             xy_list = [sorted_[0]['x'], sorted_[0]['y']]
             selection = np.array(xy_list)
-            # TODO: KeyError happened below
             res_info = info[CartesianPoint(*xy_list, self.board_length)]
             logging.debug('selection={}'.format(selection))
         except (IndexError, AttributeError):
