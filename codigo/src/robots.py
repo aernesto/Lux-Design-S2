@@ -373,8 +373,8 @@ class RobotEnacter:
         start = self.planner.nx_path_to_action_sequence(start)
         start = compress_queue(start)
 
-        # get shortest path from robot to ice
-        go_nx_path = self.planner._nx_shortest_path(self.obs.pos,
+        # get shortest path from starting tile to ice
+        go_nx_path = self.planner._nx_shortest_path(cycle_start_pos,
                                                     target_loc,
                                                     cost_type=self.cost_type)
         logging.debug('robot pos={} target_loc={}'.format(
@@ -397,7 +397,10 @@ class RobotEnacter:
         return_nx_path = flip_movement_queue(go_nx_path)
 
         # append transfer resource action
-        transfer_queue = [_transfer(self.obs.state['cargo'][resource], resource, repeat=1, n=1)]
+        theoretical_amount = dig_n * 2
+        if self.obs.my_type == 'HEAVY':
+            theoretical_amount *= 10 
+        transfer_queue = [_transfer(theoretical_amount, resource, repeat=1, n=1)]
 
         # append pickup action
         # TODO: only pickup what is necessary for next cycle
