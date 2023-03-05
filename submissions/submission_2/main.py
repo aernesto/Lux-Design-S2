@@ -29,8 +29,8 @@ def agent_fn(observation, configurations):
         env_cfg = EnvConfig.from_dict(configurations["env_cfg"])
         agent_dict[player] = ControlledAgent(player,
                                              env_cfg,
-                                             radius=100,
-                                             threshold=10)
+                                             radius=130,
+                                             threshold=15)
         agent_prev_obs[player] = dict()
     agent = agent_dict[player]
     obs = process_obs(player, agent_prev_obs[player], step,
