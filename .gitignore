@@ -27,4 +27,5 @@ data
 *tar.gz
 *html
 *log
+!codigo/src/log030623_*.log
 *prof

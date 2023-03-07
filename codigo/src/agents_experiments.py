@@ -531,14 +531,21 @@ def step_interact(env, agents, steps, map_seed):
         yield obs, rewards, dones, infos, step, agents
 
 if __name__ == "__main__":
+    """
+    $ python -m cProfile -o prof030623_1.prof agents_experiments.py <seed> <len> <logfile> <log level>
+    """
     import sys
-    logging.basicConfig(filename="module_log.log", level=logging.INFO)
+    
     seed = int(sys.argv[1])
     num_steps = int(sys.argv[2])
+    fname = sys.argv[3]
+    logging_level = sys.argv[4]
+    ll = logging.INFO if logging_level.strip().lower() == 'info' else logging.WARNING
+    logging.basicConfig(filename=fname, level=logging.INFO)
     # make a random env
     env = LuxAI_S2()
-    obs = env.reset()
+    # obs = env.reset(seed=seed)
     agent0 = ControlledAgent('player_0', env.env_cfg, threshold=15, radius=130)
-    agent1 = ControlledAgent('player_1', env.env_cfg, threshold=15, radius=130)
+    agent1 = IdleAgent('player_1', env.env_cfg, threshold=15, radius=130)
     interact(env, {'player_0': agent0, 'player_1': agent1},
              num_steps, seed=seed)
