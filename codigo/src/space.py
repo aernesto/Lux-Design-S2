@@ -4,7 +4,7 @@ import itertools
 from typing import Sequence, Iterator
 from dataclasses import dataclass
 import numpy as np
-
+logger = logging.getLogger(__name__)
 Array = np.ndarray
 
 
@@ -21,14 +21,16 @@ def identify_conn_components(r: Array, threshold: int = 0):
     components = set()
     for point in xy_iter(len(r)):
         if r[point.x, point.y] <= threshold:  # 0-rubble tiles
-            logging.debug('visited point={}'.format(point))
-            logging.debug('neighbor set={}'.format(point.all_neighbors))
-            logging.debug('current components set={}'.format(components))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('visited point={}'.format(point))
+                logger.debug('neighbor set={}'.format(point.all_neighbors))
+                logger.debug('current components set={}'.format(components))
             touched_components = [
                 c for c in components if c.touches_point(point)
             ]
             if len(touched_components):
-                logging.debug(touched_components)
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(touched_components)
                 components = components - set(
                     touched_components)  # remove touched
                 touched_components += [ConnectedComponent(
@@ -38,7 +40,8 @@ def identify_conn_components(r: Array, threshold: int = 0):
                 components.update({merger})  # add them back in
             else:
                 components.update({ConnectedComponent([point])})
-            logging.debug('new components set ={}'.format(components))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('new components set ={}'.format(components))
 
     return components
 
@@ -50,7 +53,7 @@ class CartesianPoint:
     y: int
     board_length: int = 48
 
-    def __post_init__(self):
+    def __post_init__(self):  #TODO: SLOW
         assert 0 <= self.x < self.board_length
         assert 0 <= self.y < self.board_length
 
@@ -102,7 +105,7 @@ class CartesianPoint:
     def bottom_right_neighbor(self):
         return self.bottom_neighbor.right_neighbor
 
-    @property
+    @property  # TODO: SLOW
     def all_neighbors(self):
         neighbors = set()
         if not self.at_top_edge:

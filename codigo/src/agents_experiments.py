@@ -19,7 +19,7 @@ from robots import MapPlanner, RobotEnacter
 from plants import PlantEnacter, ConnCompMapSpawner
 from codetiming import Timer
 Array = np.ndarray
-
+logger = logging.getLogger(__name__)
 
 class ControlledAgent:
     def __init__(self, player: str, env_cfg: EnvConfig, enable_monitoring: bool = False, **kwargs) -> None:
@@ -37,9 +37,9 @@ class ControlledAgent:
         self.options = kwargs
         self.max_per_plant = {HEAVY_TYPE: 8, LIGHT_TYPE: 20}
         self.spawn_timer = Timer(
-            f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logging.info)
+            f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logger.info)
         self.choose_loc_timer = Timer(
-            f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logging.info)
+            f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logger.info)
         self.tile_iterator = defaultdict(dict)
         self.resource_iter = defaultdict(dict)
 
@@ -103,7 +103,8 @@ class ControlledAgent:
     def _update_rubble_map(self):
         old = self.oracle['rubble'].copy()
         new = self.oracle['obs'].rubble_map.copy()
-        logging.debug("Total rubble diff ={}".format((old - new).sum()))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Total rubble diff ={}".format((old - new).sum()))
         #TODO: do something here?
         self.oracle['rubble'] = new
 
@@ -306,7 +307,7 @@ class ControlledAgent:
                         rad=self.options['radius']
                     )
             except KeyError:
-                logging.error('options={}'.format(self.options))
+                logger.error('options={}'.format(self.options))
                 raise
 
             # gets overwritten intentionally, so we stick with the last
@@ -449,7 +450,7 @@ def interact(env,
     step = 0
 
     interact_timer = Timer(
-        f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logging.info)
+        f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logger.info)
     # iterate until phase 1 ends
     while env.state.real_env_steps < 0: 
         if step >= steps:
@@ -468,8 +469,10 @@ def interact(env,
             first_obs = deepcopy(obs)
         imgs += [env.render("rgb_array", width=640, height=640)]
         if debug:
-            logging.debug('{step}'.format(step=step))
-        logging.info("Total time stats:{}".format(Timer.timers))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('{step}'.format(step=step))
+        if logger.isEnabledFor(logging.INFO):
+           logger.info("Total time stats:{}".format(Timer.timers))
 
     done = False
 
@@ -483,7 +486,8 @@ def interact(env,
             o = obs[player]
             if debug:
                 a = agents[player].debug_act(step, o)
-                logging.debug("{step}  {inner_counter}".format(
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("{step}  {inner_counter}".format(
                     step=step, inner_counter=inner_counter))
             else:
                 a = agents[player].act(step, o)
@@ -496,9 +500,11 @@ def interact(env,
         inner_counter += 1
         if break_at_first_action and inner_counter == 2:
             break
-        logging.info("Total time stats:{}".format(Timer.timers))
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Total time stats:{}".format(Timer.timers))
     if animate_:
-        logging.info('writing {animate_}'.format(animate_=animate_))
+        if logger.isEnabledFor(logging.INFO):
+            logger.info('writing {animate_}'.format(animate_=animate_))
         return animate(imgs, filename=animate_)
     else:
         return first_obs, obs
@@ -517,7 +523,8 @@ def step_interact(env, agents, steps, map_seed):
             actions[player] = agents[player].early_setup(step, o)
         step += 1
         obs, rewards, dones, infos = env.step(actions)
-        logging.info("Total time stats:{}".format(Timer.timers))
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("Total time stats:{}".format(Timer.timers))
         yield obs, rewards, dones, infos, step, agents
 
     while step < steps:
@@ -527,7 +534,8 @@ def step_interact(env, agents, steps, map_seed):
             actions[player] = agents[player].act(step, o)
         step += 1
         obs, rewards, dones, infos = env.step(actions)
-        logging.info("Total time stats:{}".format(Timer.timers))
+        if logger.isEnabledFor(logging.INFO):
+           logger.info("Total time stats:{}".format(Timer.timers))
         yield obs, rewards, dones, infos, step, agents
 
 if __name__ == "__main__":
@@ -535,13 +543,18 @@ if __name__ == "__main__":
     $ python -m cProfile -o prof030623_1.prof agents_experiments.py <seed> <len> <logfile> <log level>
     """
     import sys
-    
+
+    # logger's optimization: https://docs.python.org/3.7/howto/logging.html#optimization
+    logging._srcfile = None
+    logging.logThreads = 0
+    logging.logProcesses = 0
+
     seed = int(sys.argv[1])
     num_steps = int(sys.argv[2])
     fname = sys.argv[3]
     logging_level = sys.argv[4]
     ll = logging.INFO if logging_level.strip().lower() == 'info' else logging.WARNING
-    logging.basicConfig(filename=fname, level=logging.INFO)
+    logging.basicConfig(filename=fname, level=ll, filemode='w')  # w filemode overwrites
     # make a random env
     env = LuxAI_S2()
     # obs = env.reset(seed=seed)

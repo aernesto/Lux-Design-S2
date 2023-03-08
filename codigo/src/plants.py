@@ -8,7 +8,7 @@ from collections import namedtuple
 from typing import Sequence, Optional
 from space import identify_conn_components, CartesianPoint
 from robots import MapPlanner
-
+logger = logging.getLogger(__name__)
 Array = np.ndarray
 
 
@@ -119,13 +119,14 @@ class GmmMapSpawner:
         try:
             return np.array([sorted_[0]['x'], sorted_[0]['y']])
         except (IndexError, AttributeError):
-            logging.debug('scores.shape={}'.format(scores.shape))
-            logging.debug('x.shape={}'.format(x.shape))
-            logging.debug('y.shape={}'.format(y.shape))
-            logging.debug('a.shape={}'.format(a.shape))
-            logging.debug('sorted_.shape={}'.format(sorted_.shape))
-            logging.debug('sorted_[0]={}'.format(sorted_[0]))
-            logging.debug("sorted_[0]['y']={}".format(sorted_[0]))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('scores.shape={}'.format(scores.shape))
+                logger.debug('x.shape={}'.format(x.shape))
+                logger.debug('y.shape={}'.format(y.shape))
+                logger.debug('a.shape={}'.format(a.shape))
+                logger.debug('sorted_.shape={}'.format(sorted_.shape))
+                logger.debug('sorted_[0]={}'.format(sorted_[0]))
+                logger.debug("sorted_[0]['y']={}".format(sorted_[0]))
             raise
 
 
@@ -173,22 +174,25 @@ class ConnCompMapSpawner:
         a = np.array(list(zip(scores, x, y)),
                      dtype=dtype)  # create a structured array
         sorted_ = np.flip(np.sort(a, order='score'))
-        logging.debug('sorted_first_10={}'.format(sorted_[:10]))
-        logging.debug('sorted_last_10={}'.format(sorted_[-10:]))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('sorted_first_10={}'.format(sorted_[:10]))
+            logger.debug('sorted_last_10={}'.format(sorted_[-10:]))
         try:
             xy_list = [sorted_[0]['x'], sorted_[0]['y']]
             selection = np.array(xy_list)
             # TODO: KeyError happened below
             res_info = info[CartesianPoint(*xy_list, self.board_length)]
-            logging.debug('selection={}'.format(selection))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('selection={}'.format(selection))
         except (IndexError, AttributeError):
-            logging.debug('scores.shape={}'.format(scores.shape))
-            logging.debug('x.shape={}'.format(x.shape))
-            logging.debug('y.shape={}'.format(y.shape))
-            logging.debug('a.shape={}'.format(a.shape))
-            logging.debug('sorted_.shape={}'.format(sorted_.shape))
-            logging.debug('sorted_[0]={}'.format(sorted_[0]))
-            logging.debug("sorted_[0]['y']={}".format(sorted_[0]))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('scores.shape={}'.format(scores.shape))
+                logger.debug('x.shape={}'.format(x.shape))
+                logger.debug('y.shape={}'.format(y.shape))
+                logger.debug('a.shape={}'.format(a.shape))
+                logger.debug('sorted_.shape={}'.format(sorted_.shape))
+                logger.debug('sorted_[0]={}'.format(sorted_[0]))
+                logger.debug("sorted_[0]['y']={}".format(sorted_[0]))
             raise
         return selection, res_info['ice_set'], res_info['ore_set']
 
@@ -245,7 +249,8 @@ class ConnCompMapSpawner:
             #         score -= self.planner.heavy_distance(point, resource_tile)
 
             scores.append(score)
-            logging.debug('point={} gets a score of {}'.format(point, score))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('point={} gets a score of {}'.format(point, score))
         return np.array(scores), resource_info
 
 
