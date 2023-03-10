@@ -188,7 +188,7 @@ class ConnCompMapSpawner(MapSpawner):
                  threshold: float = 0,
                  rad: float = 30):
         super().__init__(obs, planner, rad)
-        self.total_factories = self.original_obs.my_team['factories_to_place']
+        self.total_factories = self.obs.my_team['factories_to_place']
         self.thr = threshold
         self.min_self_distance = 400
         self.self_avoidance_reward = 20
