@@ -1,7 +1,8 @@
 import unittest
-from space import CartesianPoint, ConnectedComponent, xy_iter
 import sys
 sys.path.append('..')
+from space import CartesianPoint, ConnectedComponent, xy_iter
+
 
 
 class TestSpace(unittest.TestCase):

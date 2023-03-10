@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 from obs import (RobotId,
                  PlantId,
                  PlantAssignment,
@@ -8,9 +10,9 @@ from obs import (RobotId,
 from space import CartesianPoint
 from luxai_s2.env import LuxAI_S2
 import unittest
-import sys
+
 import numpy as np
-sys.path.append('..')
+
 
 
 class TestCenteredObservation(unittest.TestCase):

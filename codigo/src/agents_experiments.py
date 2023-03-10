@@ -16,13 +16,21 @@ from obs import (CenteredObservation,
                  PlantAssignment,
                  PlantId)
 from robots import MapPlanner, RobotEnacter
-from plants import PlantEnacter, ConnCompMapSpawner
+from plants import PlantEnacter, ConnCompMapSpawner, GmmMapSpawner
 from codetiming import Timer
 Array = np.ndarray
 logger = logging.getLogger(__name__)
 
 class ControlledAgent:
-    def __init__(self, player: str, env_cfg: EnvConfig, enable_monitoring: bool = False, **kwargs) -> None:
+    def __init__(
+            self, 
+            player: str, 
+            env_cfg: EnvConfig, 
+            enable_monitoring: bool = False, 
+            spawn_method: str = 'gmm',
+            **kwargs
+        ) -> None:
+        self.spawn_method = spawn_method
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
@@ -301,17 +309,27 @@ class ControlledAgent:
         else:
             try:
                 with self.spawn_timer:
-                    self.map_spawner = ConnCompMapSpawner(
-                        CenteredObservation(dobs, self.player),
-                        threshold=self.options['threshold'],
-                        rad=self.options['radius']
-                    )
+                    obs_ = CenteredObservation(dobs, self.player)
+                    # gets overwritten intentionally, so we stick with the last
+                    self.planner = MapPlanner(obs_)
+                    if self.spawn_method == 'conn':
+                        self.map_spawner = ConnCompMapSpawner(
+                            obs_,
+                            self.planner,
+                            threshold=self.options['threshold'],
+                            rad=self.options['radius']
+                        )
+                    elif self.spawn_method == 'gmm':
+                        self.map_spawner = GmmMapSpawner(
+                                obs_, 
+                                self.planner, 
+                                rad=self.options['radius']
+                            )
+                    else:
+                        raise ValueError("unknown spawn_method")
             except KeyError:
                 logger.error('options={}'.format(self.options))
                 raise
-
-            # gets overwritten intentionally, so we stick with the last
-            self.planner = self.map_spawner.planner
 
             myteam = dobs['teams'][self.player]
             factories_to_place = myteam['factories_to_place']
@@ -558,7 +576,7 @@ if __name__ == "__main__":
     # make a random env
     env = LuxAI_S2()
     # obs = env.reset(seed=seed)
-    agent0 = ControlledAgent('player_0', env.env_cfg, threshold=15, radius=130)
-    agent1 = IdleAgent('player_1', env.env_cfg, threshold=15, radius=130)
+    agent0 = ControlledAgent('player_0', env.env_cfg, spawn_method='gmm', radius=130)
+    agent1 = ControlledAgent('player_1', env.env_cfg, spawn_method='conn', threshold=15, radius=130)
     interact(env, {'player_0': agent0, 'player_1': agent1},
              num_steps, seed=seed)
