@@ -6,7 +6,7 @@ import logging
 from luxai_s2.config import EnvConfig
 from space import CartesianPoint
 from collections import namedtuple
-
+logger = logging.getLogger(__name__)
 RobotId = namedtuple("RobotId", "unit_id type", module=__name__)
 PlantId = namedtuple("PlantId", "unit_id pos", module=__name__)
 PlantAssignment = namedtuple("PlantAssignment", "unit_id pos tile", module=__name__)
@@ -117,7 +117,7 @@ class CenteredObservation:
             # breakpoint()
             return self.dict_obj['teams'][self.my_player_name]
         except KeyError:
-            logging.error("PB with team dict:{}".format(self.dict_obj['teams']))
+            logger.error("PB with team dict:{}".format(self.dict_obj['teams']))
             raise
 
     @property
@@ -174,7 +174,8 @@ class RobotCenteredObservation(CenteredObservation):
             raise ValueError(
                 "unit with ID {uid} not found in obs_dict".format(uid=uid))
         except TypeError:
-            logging.debug('{s}  {d}'.format(s=type(self), d=dir(self)))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('{s}  {d}'.format(s=type(self), d=dir(self)))
             raise
 
     def _get_type(self):
@@ -255,7 +256,7 @@ class FactoryCenteredObservation(CenteredObservation):
             raise ValueError(
                 "unit with ID {uid} not found in obs_dict".format(uid=uid))
         except TypeError:
-            logging.error('{}'.format(self.dict_obj))
+            logger.error('{}'.format(self.dict_obj))
             raise
 
     @property

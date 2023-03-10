@@ -9,6 +9,7 @@ import networkx as nx
 from typing import Sequence, List, Tuple, Optional
 from space import CartesianPoint, xy_iter
 Array = np.ndarray
+logger = logging.getLogger(__name__)
 
 
 def invert_dict(d):
@@ -280,8 +281,9 @@ class MapPlanner:
         try:
             previous_point = path[0]
         except KeyError:
-            logging.debug('pb with path')
-            logging.debug(path)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('pb with path')
+                logger.debug(path)
             raise
         actions = []
         for point in path[1:]:
@@ -356,7 +358,8 @@ class RobotEnacter:
         self.cost_type = self.obs.my_type.lower() + '_weight'
         self.myself = self.obs.myself
         self.pos = self.obs.pos
-        logging.debug('RobotEnacter.cost_type={}'.format(self.cost_type))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('RobotEnacter.cost_type={}'.format(self.cost_type))
 
     def dig_cycle(
             self,
@@ -365,7 +368,8 @@ class RobotEnacter:
             cycle_start_pos: CartesianPoint,
             dig_n: int = 5,
     ):
-        logging.debug('--debug from RobotEnacter.ice_cycle')
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('--debug from RobotEnacter.ice_cycle')
 
         # TODO: go to start
         start = self.planner._nx_shortest_path(
@@ -377,19 +381,22 @@ class RobotEnacter:
         go_nx_path = self.planner._nx_shortest_path(cycle_start_pos,
                                                     target_loc,
                                                     cost_type=self.cost_type)
-        logging.debug('robot pos={} target_loc={}'.format(
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('robot pos={} target_loc={}'.format(
             self.obs.pos, target_loc))
 
         # translate path to action queue
         go_nx_path = self.planner.nx_path_to_action_sequence(go_nx_path)
         go_nx_path = compress_queue(go_nx_path)
         go_nx_path = format_repeat(go_nx_path, rep_val=None)
-        logging.debug('go path={}'.format(go_nx_path))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('go path={}'.format(go_nx_path))
 
         # append dig action
         # TODO: factor in power cost in below logic
         dig_queue = [_dig(resource, dig_n, dig_n)]
-        logging.debug('go + dig={}'.format(dig_queue))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('go + dig={}'.format(dig_queue))
 
         # append return path
         # TODO: check correctness of next two lines
@@ -408,14 +415,16 @@ class RobotEnacter:
 
         queue = start + go_nx_path + dig_queue
         queue += return_nx_path + transfer_queue + pickup_queue
-        logging.debug('start + go + dig + return + pickup={}'.format(queue))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('start + go + dig + return + pickup={}'.format(queue))
 
         # queue = compress_queue(queue)
-
-        logging.debug('--END debug from RobotEnacter.ice_cycle')
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('--END debug from RobotEnacter.ice_cycle')
 
         # TODO: avoid hard-coding queue length below
-        logging.info("""
+        if logger.isEnabledFor(logging.INFO):
+            logger.info("""
 sending robot {} currently at position {}
 on an {} cycle with start tile {} and target tile {}
 Full compressed queue is {}
