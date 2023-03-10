@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import itertools
-from typing import Sequence, Iterator
+from typing import Sequence, Iterator, ClassVar
 from dataclasses import dataclass
 import numpy as np
 logger = logging.getLogger(__name__)
@@ -46,64 +46,52 @@ def identify_conn_components(r: Array, threshold: int = 0):
     return components
 
 
-@dataclass(frozen=True)
+@dataclass
 class CartesianPoint:
     """A class to hold a point's data."""
     x: int
     y: int
     board_length: int = 48
 
-    def __post_init__(self):  #TODO: SLOW
-        assert 0 <= self.x < self.board_length
-        assert 0 <= self.y < self.board_length
+    def __hash__(self):
+        return hash((self.x, self.y, self.board_length))
+
+    def __post_init__(self):  # TODO: SLOW
+        # dropping assert statements below for performance reasons
+        # assert 0 <= self.x < self.board_length
+        # assert 0 <= self.y < self.board_length
+        self.at_right_edge = self.x == self.board_length - 1
+
+        self.at_bottom_edge = self.y == self.board_length - 1
+
+        self.at_top_edge = self.y == 0
+
+        self.at_left_edge = self.x == 0
 
     @property
-    def at_bottom_edge(self):
-        return self.y == self.board_length - 1
+    def top_neighbor(self): return CartesianPoint(
+        self.x, self.y - 1, self.board_length)
 
     @property
-    def at_right_edge(self):
-        return self.x == self.board_length - 1
+    def bottom_neighbor(self): return CartesianPoint(
+        self.x, self.y + 1, self.board_length)
 
     @property
-    def at_top_edge(self):
-        return self.y == 0
+    def left_neighbor(self): return CartesianPoint(
+        self.x - 1, self.y, self.board_length)
 
     @property
-    def at_left_edge(self):
-        return self.x == 0
+    def right_neighbor(self): return CartesianPoint(
+        self.x + 1, self.y, self.board_length)
 
     @property
-    def top_neighbor(self):
-        return CartesianPoint(self.x, self.y - 1, self.board_length)
-
+    def top_left_neighbor(self): return self.top_neighbor.left_neighbor
     @property
-    def bottom_neighbor(self):
-        return CartesianPoint(self.x, self.y + 1, self.board_length)
-
+    def bottom_left_neighbor(self): return self.bottom_neighbor.left_neighbor
     @property
-    def left_neighbor(self):
-        return CartesianPoint(self.x - 1, self.y, self.board_length)
-
+    def top_right_neighbor(self): return self.top_neighbor.right_neighbor
     @property
-    def top_left_neighbor(self):
-        return self.top_neighbor.left_neighbor
-
-    @property
-    def bottom_left_neighbor(self):
-        return self.bottom_neighbor.left_neighbor
-
-    @property
-    def right_neighbor(self):
-        return CartesianPoint(self.x + 1, self.y, self.board_length)
-
-    @property
-    def top_right_neighbor(self):
-        return self.top_neighbor.right_neighbor
-
-    @property
-    def bottom_right_neighbor(self):
-        return self.bottom_neighbor.right_neighbor
+    def bottom_right_neighbor(self): return self.bottom_neighbor.right_neighbor
 
     @property  # TODO: SLOW
     def all_neighbors(self):
@@ -149,7 +137,6 @@ class CartesianPoint:
                     tiles.update({n})
         return tiles
 
-
     def __repr__(self):
         return "x:{} y:{} size:{}".format(self.x, self.y, self.board_length)
 
@@ -160,6 +147,7 @@ class CartesianPoint:
 class ConnectedComponent:
     def __init__(self, iterable: Iterator[CartesianPoint]):
         self.content = frozenset(iterable)
+        self.area = len(self.content)
 
     def __len__(self):
         return len(self.content)
@@ -183,10 +171,6 @@ class ConnectedComponent:
             if point in inset.all_neighbors:
                 return True
         return False
-
-    @property
-    def area(self):
-        return len(self)
 
     @staticmethod
     def union(components):
