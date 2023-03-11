@@ -1,7 +1,6 @@
 import json
 import logging
 from typing import Dict
-import sys
 from argparse import Namespace
 
 from agents_experiments import ControlledAgent

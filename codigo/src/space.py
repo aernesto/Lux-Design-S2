@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*-
+import json
 import logging
 import itertools
-from typing import Sequence, Iterator, ClassVar
-from dataclasses import dataclass
+from typing import Iterator, Mapping
 import numpy as np
 logger = logging.getLogger(__name__)
 Array = np.ndarray
+try:
+    with open('space_lookup.json', 'rt') as fh:
+        SPACE_LOOKUP = json.load(fh)
+except:
+    with open('../space_lookup.json', 'rt') as fh:
+        SPACE_LOOKUP = json.load(fh)
+
+INVERSE = {tuple(v['xys']): k for k, v in SPACE_LOOKUP.items()}
 
 
 def xy_iter(size: int = 48):
@@ -46,27 +54,42 @@ def identify_conn_components(r: Array, threshold: int = 0):
     return components
 
 
-@dataclass
+def get_points(l: Mapping, k: str, bl: int):
+    return set(CartesianPoint(*v, bl) for v in l[k])
+
+
 class CartesianPoint:
     """A class to hold a point's data."""
-    x: int
-    y: int
-    board_length: int = 48
+
+    def __init__(self, x: int, y: int, board_length: int = 48):
+        self.x = x
+        self.y = y
+        self.xy = (x, y)
+        self.board_length = board_length
+        self.lookup = SPACE_LOOKUP[INVERSE[(x, y, board_length)]]
+
+        self.at_right_edge = self.lookup['at_right_edge']
+        self.at_left_edge = self.lookup['at_left_edge']
+        self.at_top_edge = self.lookup['at_top_edge']
+        self.at_bottom_edge = self.lookup['at_bottom_edge']
+
+    @property
+    def all_neighbors(self):
+        return get_points(self.lookup, 'all_neighbors', self.board_length)
+
+    @property
+    def surrounding_neighbors(self):
+        return get_points(self.lookup, 'surrounding_neighbors', self.board_length)
+
+    @property
+    def plant_first_lichen_tiles(self):
+        return get_points(self.lookup, 'plant_first_lichen_tiles', self.board_length)
 
     def __hash__(self):
         return hash((self.x, self.y, self.board_length))
 
-    def __post_init__(self):  # TODO: SLOW
-        # dropping assert statements below for performance reasons
-        # assert 0 <= self.x < self.board_length
-        # assert 0 <= self.y < self.board_length
-        self.at_right_edge = self.x == self.board_length - 1
-
-        self.at_bottom_edge = self.y == self.board_length - 1
-
-        self.at_top_edge = self.y == 0
-
-        self.at_left_edge = self.x == 0
+    def __eq__(self, other):
+        return hash(self) == hash(other)
 
     @property
     def top_neighbor(self): return CartesianPoint(
@@ -93,49 +116,49 @@ class CartesianPoint:
     @property
     def bottom_right_neighbor(self): return self.bottom_neighbor.right_neighbor
 
-    @property  # TODO: SLOW
-    def all_neighbors(self):
-        neighbors = set()
-        if not self.at_top_edge:
-            neighbors.update({self.top_neighbor})
-        if not self.at_bottom_edge:
-            neighbors.update({self.bottom_neighbor})
-        if not self.at_right_edge:
-            neighbors.update({self.right_neighbor})
-        if not self.at_left_edge:
-            neighbors.update({self.left_neighbor})
-        return neighbors
+    # @property  # TODO: SLOW
+    # def all_neighbors(self):
+    #     neighbors = set()
+    #     if not self.at_top_edge:
+    #         neighbors.update({self.top_neighbor})
+    #     if not self.at_bottom_edge:
+    #         neighbors.update({self.bottom_neighbor})
+    #     if not self.at_right_edge:
+    #         neighbors.update({self.right_neighbor})
+    #     if not self.at_left_edge:
+    #         neighbors.update({self.left_neighbor})
+    #     return neighbors
 
-    @property
-    def surrounding_neighbors(self):
-        neighbors = set()
-        if not self.at_top_edge:
-            neighbors.update({self.top_neighbor})
-            if not self.at_right_edge:
-                neighbors.update({self.top_right_neighbor})
-            if not self.at_left_edge:
-                neighbors.update({self.top_left_neighbor})
-        if not self.at_bottom_edge:
-            neighbors.update({self.bottom_neighbor})
-            if not self.at_right_edge:
-                neighbors.update({self.bottom_right_neighbor})
-            if not self.at_left_edge:
-                neighbors.update({self.bottom_left_neighbor})
-        if not self.at_right_edge:
-            neighbors.update({self.right_neighbor})
-        if not self.at_left_edge:
-            neighbors.update({self.left_neighbor})
-        return neighbors
+    # @property
+    # def surrounding_neighbors(self):
+    #     neighbors = set()
+    #     if not self.at_top_edge:
+    #         neighbors.update({self.top_neighbor})
+    #         if not self.at_right_edge:
+    #             neighbors.update({self.top_right_neighbor})
+    #         if not self.at_left_edge:
+    #             neighbors.update({self.top_left_neighbor})
+    #     if not self.at_bottom_edge:
+    #         neighbors.update({self.bottom_neighbor})
+    #         if not self.at_right_edge:
+    #             neighbors.update({self.bottom_right_neighbor})
+    #         if not self.at_left_edge:
+    #             neighbors.update({self.bottom_left_neighbor})
+    #     if not self.at_right_edge:
+    #         neighbors.update({self.right_neighbor})
+    #     if not self.at_left_edge:
+    #         neighbors.update({self.left_neighbor})
+    #     return neighbors
 
-    @property
-    def plant_first_lichen_tiles(self):
-        tiles = set()
-        pre_tiles = self.surrounding_neighbors
-        for pre_tile in pre_tiles:
-            for n in pre_tile.all_neighbors:
-                if n not in pre_tiles:
-                    tiles.update({n})
-        return tiles
+    # @property
+    # def plant_first_lichen_tiles(self):
+    #     tiles = set()
+    #     pre_tiles = self.surrounding_neighbors
+    #     for pre_tile in pre_tiles:
+    #         for n in pre_tile.all_neighbors:
+    #             if n not in pre_tiles:
+    #                 tiles.update({n})
+    #     return tiles
 
     def __repr__(self):
         return "x:{} y:{} size:{}".format(self.x, self.y, self.board_length)

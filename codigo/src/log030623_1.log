@@ -1,7 +1,0 @@
-INFO:root:single step (2 players) took: 0.00
-INFO:root:Total time stats:{'interact_timer': 0.0011028700000679237}
-INFO:root:Generate Spawners: 2.11
-INFO:root:Choose Locations: 1.01
-INFO:root:Generate Spawners: 2.05
-INFO:root:single step (2 players) took: 5.17
-INFO:root:Total time stats:{'interact_timer': 5.17317417400011, 'player_0 spawn_timer': 2.1070327649999854, 'player_0 choose_loc_timer': 1.0143521740000097, 'player_1 spawn_timer': 2.049777832000018}

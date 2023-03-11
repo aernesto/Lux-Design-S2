@@ -21,15 +21,16 @@ from codetiming import Timer
 Array = np.ndarray
 logger = logging.getLogger(__name__)
 
+
 class ControlledAgent:
     def __init__(
-            self, 
-            player: str, 
-            env_cfg: EnvConfig, 
-            enable_monitoring: bool = False, 
-            spawn_method: str = 'gmm',
-            **kwargs
-        ) -> None:
+        self,
+        player: str,
+        env_cfg: EnvConfig,
+        enable_monitoring: bool = False,
+        spawn_method: str = 'gmm',
+        **kwargs
+    ) -> None:
         self.spawn_method = spawn_method
         self.player = player
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
@@ -113,9 +114,8 @@ class ControlledAgent:
         new = self.oracle['obs'].rubble_map.copy()
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Total rubble diff ={}".format((old - new).sum()))
-        #TODO: do something here?
+        # TODO: do something here?
         self.oracle['rubble'] = new
-
 
     def update_oracle(self, obs: CenteredObservation):
         """Update oracle at each call of act method."""
@@ -279,25 +279,27 @@ class ControlledAgent:
                 self._flip_robot_resource_assignment(robot.myself)
                 try:
                     resource_type = self.oracle['robot_to_resource'][robot.myself]
-                    target_tile = next(self.resource_iter[plant][resource_type])
+                    target_tile = next(
+                        self.resource_iter[plant][resource_type])
                 except StopIteration:
                     # this is not going well
                     # TODO: let's make this robot a Kamikaze?
                     pass
                 else:
                     actions[robot.unit_id] = enacter.dig_cycle(
-                    target_tile, 
-                    resource_type,
-                    assigned_plant.tile, 
-                    dig_n=5
+                        target_tile,
+                        resource_type,
+                        assigned_plant.tile,
+                        dig_n=5
                     )
             else:
                 actions[robot.unit_id] = enacter.dig_cycle(
-                    target_tile, 
+                    target_tile,
                     resource_type,
-                    assigned_plant.tile, 
+                    assigned_plant.tile,
                     dig_n=5
-                    )
+                )
+
     def _flip_robot_resource_assignment(self, rid: RobotId):
         storage = self.oracle['robot_to_resource']
         old = storage[rid]
@@ -321,10 +323,10 @@ class ControlledAgent:
                         )
                     elif self.spawn_method == 'gmm':
                         self.map_spawner = GmmMapSpawner(
-                                obs_, 
-                                self.planner, 
-                                rad=self.options['radius']
-                            )
+                            obs_,
+                            self.planner,
+                            rad=self.options['radius']
+                        )
                     else:
                         raise ValueError("unknown spawn_method")
             except KeyError:
@@ -470,7 +472,7 @@ def interact(env,
     interact_timer = Timer(
         f"interact_timer", text="single step (2 players) took: {:.2f}", logger=logger.info)
     # iterate until phase 1 ends
-    while env.state.real_env_steps < 0: 
+    while env.state.real_env_steps < 0:
         if step >= steps:
             break
         actions = {}
@@ -490,7 +492,7 @@ def interact(env,
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug('{step}'.format(step=step))
         if logger.isEnabledFor(logging.INFO):
-           logger.info("Total time stats:{}".format(Timer.timers))
+            logger.info("Total time stats:{}".format(Timer.timers))
 
     done = False
 
@@ -506,7 +508,7 @@ def interact(env,
                 a = agents[player].debug_act(step, o)
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("{step}  {inner_counter}".format(
-                    step=step, inner_counter=inner_counter))
+                        step=step, inner_counter=inner_counter))
             else:
                 a = agents[player].act(step, o)
             actions[player] = a
@@ -553,8 +555,9 @@ def step_interact(env, agents, steps, map_seed):
         step += 1
         obs, rewards, dones, infos = env.step(actions)
         if logger.isEnabledFor(logging.INFO):
-           logger.info("Total time stats:{}".format(Timer.timers))
+            logger.info("Total time stats:{}".format(Timer.timers))
         yield obs, rewards, dones, infos, step, agents
+
 
 if __name__ == "__main__":
     """
@@ -572,11 +575,14 @@ if __name__ == "__main__":
     fname = sys.argv[3]
     logging_level = sys.argv[4]
     ll = logging.INFO if logging_level.strip().lower() == 'info' else logging.WARNING
-    logging.basicConfig(filename=fname, level=ll, filemode='w')  # w filemode overwrites
+    logging.basicConfig(filename=fname, level=ll,
+                        filemode='w')  # w filemode overwrites
     # make a random env
     env = LuxAI_S2()
     # obs = env.reset(seed=seed)
-    agent0 = ControlledAgent('player_0', env.env_cfg, spawn_method='gmm', radius=130)
-    agent1 = ControlledAgent('player_1', env.env_cfg, spawn_method='conn', threshold=15, radius=130)
+    agent0 = ControlledAgent('player_0', env.env_cfg,
+                             spawn_method='gmm', radius=130)
+    agent1 = ControlledAgent('player_1', env.env_cfg,
+                             spawn_method='conn', threshold=15, radius=130)
     interact(env, {'player_0': agent0, 'player_1': agent1},
              num_steps, seed=seed)

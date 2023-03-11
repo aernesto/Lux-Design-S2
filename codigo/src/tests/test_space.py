@@ -14,13 +14,17 @@ class TestSpace(unittest.TestCase):
         self.right = CartesianPoint(self.x + 1, self.y, self.len)
 
     def test_xy_iter(self):
-        points = {
-            CartesianPoint(0, 0, 2),
-            CartesianPoint(0, 1, 2),
-            CartesianPoint(1, 0, 2),
-            CartesianPoint(1, 1, 2),
-        }
-        self.assertTrue(all(point in points for point in xy_iter(2)))
+        b = 48
+        points = set()
+        for i in range(b):
+            for j in range(b):
+                points.update({CartesianPoint(i, j, b)})
+        print(len(points))
+        for point in xy_iter(b):
+            if point not in points:
+                print(point)
+                break
+        self.assertTrue(all(point in points for point in xy_iter(b)))
 
     def test_cartesian_point(self):
         self.assertTrue(self.point.at_left_edge)
