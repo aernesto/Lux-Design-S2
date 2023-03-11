@@ -29,7 +29,7 @@ def agent_fn(observation, configurations):
         env_cfg = EnvConfig.from_dict(configurations["env_cfg"])
         agent_dict[player] = ControlledAgent(player,
                                              env_cfg,
-                                             radius=130,
+                                             radius=400,
                                              threshold=15)
         agent_prev_obs[player] = dict()
     agent = agent_dict[player]
