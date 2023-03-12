@@ -203,7 +203,7 @@ class CartesianPoint:
         return "x:{} y:{}".format(self.x, self.y)
 
 
-# @functools.lru_cache(maxsize=3*48*48)
+@functools.lru_cache(maxsize=3*48*48)
 def get_points(point_key: CartesianPoint, dkey: str):
     bl = point_key.board_length
     l = point_key.lookup
