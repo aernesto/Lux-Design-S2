@@ -82,11 +82,8 @@ class CartesianPoint:
     """A class to hold a point's data."""
     BANK = {}
 
-    def __new__(cls, *args, **kwargs):
-        if kwargs:
-            xys = (*args, kwargs['board_length'])
-        else:
-            xys = args
+    def __new__(cls, x: int, y: int, board_length: int = 48):
+        xys = (x, y, board_length)
         if xys not in cls.BANK:
             # logger.info(f"__new__: A case BANK={cls.BANK}")
             return super().__new__(cls)
