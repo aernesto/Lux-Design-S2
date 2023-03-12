@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 import json
 import logging
+import functools
 import itertools
-from typing import Iterator, Mapping
+from typing import Iterator
 import numpy as np
+# from joblib import Memory
+# cachedir = 'space_cache'
+
+# memory = Memory(cachedir, verbose=0)
 logger = logging.getLogger(__name__)
 Array = np.ndarray
 try:
@@ -54,36 +59,67 @@ def identify_conn_components(r: Array, threshold: int = 0):
     return components
 
 
-def get_points(l: Mapping, k: str, bl: int):
-    return set(CartesianPoint(*v, bl) for v in l[k])
+# @memory.cache
+# class MemoizeMutable:
+#     """Memoize(fn) - an instance which acts like fn but memoizes its arguments
+#        Will work on functions with mutable arguments (slower than Memoize)
+#     """
+#     def __init__(self, fn):
+#         self.fn = fn
+#         self.memo = {}
+#     def __call__(self, *args):
+#         import pickle
+#         str = pickle.dumps(args)
+#         if not self.memo.has_key(str):
+#             self.memo[str] = self.fn(*args)
+#         return self.memo[str]
+
+
+# get_points = MemoizeMutable(get_points)
 
 
 class CartesianPoint:
     """A class to hold a point's data."""
+    BANK = {}
+
+    def __new__(cls, *args, **kwargs):
+        if kwargs:
+            xys = (*args, kwargs['board_length'])
+        else:
+            xys = args
+        if xys not in cls.BANK:
+            logger.info(f"__new__: A case BANK={cls.BANK}")
+            return super().__new__(cls)
+        logger.info(f"__new__: B case BANK={cls.BANK}")
+        return cls.BANK[xys]
 
     def __init__(self, x: int, y: int, board_length: int = 48):
-        self.x = x
-        self.y = y
-        self.xy = (x, y)
-        self.board_length = board_length
-        self.lookup = SPACE_LOOKUP[INVERSE[(x, y, board_length)]]
+        trix = (x, y, board_length)
+        if trix not in self.BANK:
+            logger.info("entering CartesianPoint if block from __init__")
+            self.x = x
+            self.y = y
+            self.xy = (x, y)
+            self.board_length = board_length
+            self.lookup = SPACE_LOOKUP[INVERSE[(x, y, board_length)]]
 
-        self.at_right_edge = self.lookup['at_right_edge']
-        self.at_left_edge = self.lookup['at_left_edge']
-        self.at_top_edge = self.lookup['at_top_edge']
-        self.at_bottom_edge = self.lookup['at_bottom_edge']
+            self.at_right_edge = self.lookup['at_right_edge']
+            self.at_left_edge = self.lookup['at_left_edge']
+            self.at_top_edge = self.lookup['at_top_edge']
+            self.at_bottom_edge = self.lookup['at_bottom_edge']
+            self.BANK[trix] = self
 
     @property
     def all_neighbors(self):
-        return get_points(self.lookup, 'all_neighbors', self.board_length)
+        return get_points(self, 'all_neighbors')
 
     @property
     def surrounding_neighbors(self):
-        return get_points(self.lookup, 'surrounding_neighbors', self.board_length)
+        return get_points(self, 'surrounding_neighbors')
 
     @property
     def plant_first_lichen_tiles(self):
-        return get_points(self.lookup, 'plant_first_lichen_tiles', self.board_length)
+        return get_points(self, 'plant_first_lichen_tiles')
 
     def __hash__(self):
         return hash((self.x, self.y, self.board_length))
@@ -165,6 +201,13 @@ class CartesianPoint:
 
     def __str__(self):
         return "x:{} y:{}".format(self.x, self.y)
+
+
+# @functools.lru_cache(maxsize=3*48*48)
+def get_points(point_key: CartesianPoint, dkey: str):
+    bl = point_key.board_length
+    l = point_key.lookup
+    return set(CartesianPoint(*v, bl) for v in l[dkey])
 
 
 class ConnectedComponent:
