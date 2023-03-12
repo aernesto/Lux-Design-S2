@@ -581,7 +581,7 @@ if __name__ == "__main__":
     env = LuxAI_S2()
     # obs = env.reset(seed=seed)
     agent0 = ControlledAgent('player_0', env.env_cfg,
-                             spawn_method='gmm', radius=130)
+                             spawn_method='conn', radius=130, threshold=15)
     agent1 = ControlledAgent('player_1', env.env_cfg,
                              spawn_method='conn', threshold=15, radius=130)
     interact(env, {'player_0': agent0, 'player_1': agent1},

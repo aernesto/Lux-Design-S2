@@ -88,15 +88,15 @@ class CartesianPoint:
         else:
             xys = args
         if xys not in cls.BANK:
-            logger.info(f"__new__: A case BANK={cls.BANK}")
+            # logger.info(f"__new__: A case BANK={cls.BANK}")
             return super().__new__(cls)
-        logger.info(f"__new__: B case BANK={cls.BANK}")
+        # logger.info(f"__new__: B case BANK={cls.BANK}")
         return cls.BANK[xys]
 
     def __init__(self, x: int, y: int, board_length: int = 48):
         trix = (x, y, board_length)
         if trix not in self.BANK:
-            logger.info("entering CartesianPoint if block from __init__")
+            # logger.info("entering CartesianPoint if block from __init__")
             self.x = x
             self.y = y
             self.xy = (x, y)
