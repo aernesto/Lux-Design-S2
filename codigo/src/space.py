@@ -5,20 +5,21 @@ import functools
 import itertools
 from typing import Iterator
 import numpy as np
+from space_lookup import SPACE
 # from joblib import Memory
 # cachedir = 'space_cache'
 
 # memory = Memory(cachedir, verbose=0)
 logger = logging.getLogger(__name__)
 Array = np.ndarray
-try:
-    with open('space_lookup.json', 'rt') as fh:
-        SPACE_LOOKUP = json.load(fh)
-except:
-    with open('../space_lookup.json', 'rt') as fh:
-        SPACE_LOOKUP = json.load(fh)
+#  try:
+#  with open('space_lookup.json', 'rt') as fh:
+#  SPACE_LOOKUP = json.load(fh)
+#  except:
+#  with open('../space_lookup.json', 'rt') as fh:
+#  SPACE_LOOKUP = json.load(fh)
 
-INVERSE = {tuple(v['xys']): k for k, v in SPACE_LOOKUP.items()}
+INVERSE = {tuple(v['xys']): k for k, v in SPACE.items()}
 
 
 def xy_iter(size: int = 48):
@@ -74,7 +75,6 @@ def identify_conn_components(r: Array, threshold: int = 0):
 #             self.memo[str] = self.fn(*args)
 #         return self.memo[str]
 
-
 # get_points = MemoizeMutable(get_points)
 
 
@@ -98,7 +98,7 @@ class CartesianPoint:
             self.y = y
             self.xy = (x, y)
             self.board_length = board_length
-            self.lookup = SPACE_LOOKUP[INVERSE[(x, y, board_length)]]
+            self.lookup = SPACE[INVERSE[(x, y, board_length)]]
 
             self.at_right_edge = self.lookup['at_right_edge']
             self.at_left_edge = self.lookup['at_left_edge']
@@ -125,29 +125,36 @@ class CartesianPoint:
         return hash(self) == hash(other)
 
     @property
-    def top_neighbor(self): return CartesianPoint(
-        self.x, self.y - 1, self.board_length)
+    def top_neighbor(self):
+        return CartesianPoint(self.x, self.y - 1, self.board_length)
 
     @property
-    def bottom_neighbor(self): return CartesianPoint(
-        self.x, self.y + 1, self.board_length)
+    def bottom_neighbor(self):
+        return CartesianPoint(self.x, self.y + 1, self.board_length)
 
     @property
-    def left_neighbor(self): return CartesianPoint(
-        self.x - 1, self.y, self.board_length)
+    def left_neighbor(self):
+        return CartesianPoint(self.x - 1, self.y, self.board_length)
 
     @property
-    def right_neighbor(self): return CartesianPoint(
-        self.x + 1, self.y, self.board_length)
+    def right_neighbor(self):
+        return CartesianPoint(self.x + 1, self.y, self.board_length)
 
     @property
-    def top_left_neighbor(self): return self.top_neighbor.left_neighbor
+    def top_left_neighbor(self):
+        return self.top_neighbor.left_neighbor
+
     @property
-    def bottom_left_neighbor(self): return self.bottom_neighbor.left_neighbor
+    def bottom_left_neighbor(self):
+        return self.bottom_neighbor.left_neighbor
+
     @property
-    def top_right_neighbor(self): return self.top_neighbor.right_neighbor
+    def top_right_neighbor(self):
+        return self.top_neighbor.right_neighbor
+
     @property
-    def bottom_right_neighbor(self): return self.bottom_neighbor.right_neighbor
+    def bottom_right_neighbor(self):
+        return self.bottom_neighbor.right_neighbor
 
     # @property  # TODO: SLOW
     # def all_neighbors(self):
@@ -200,7 +207,7 @@ class CartesianPoint:
         return "x:{} y:{}".format(self.x, self.y)
 
 
-@functools.lru_cache(maxsize=3*48*48)
+@functools.lru_cache(maxsize=3 * 48 * 48)
 def get_points(point_key: CartesianPoint, dkey: str):
     bl = point_key.board_length
     l = point_key.lookup
