@@ -249,6 +249,12 @@ class ConnCompMapSpawner(MapSpawner):
             # if score above is below 6, skip
             if score < min_lichen_tiles:
                 scores.append(0)
+                resource_info[point] = {
+                    'ice_count': 0,
+                    'ice_set': [],
+                    'ore_count': 0,
+                    'ore_set': []
+                }
                 continue
 
             # add resources score
