@@ -38,19 +38,27 @@ class ControlledAgent:
         self.env_cfg: EnvConfig = env_cfg
         self.board_length: int = self.env_cfg.map_size
         self.max_sample = max_sample
+
         self.max_allowed_factories: int = None  # set in early_setup method
         self.planner: MapPlanner = None  # set in early_setup
         self.map_spawner = None  # set in early_setup
+
         self.oracle = self.initialize_oracle()
-        self.stats = []
+
         self._rng = np.random.default_rng()
+
         self.enable_monitoring = enable_monitoring
+        self.stats = []
+
         self.options = kwargs
+
         self.max_per_plant = {HEAVY_TYPE: 8, LIGHT_TYPE: 20}
+
         self.spawn_timer = Timer(
             f"{self.player} spawn_timer", text="Generate Spawners: {:.2f}", logger=logger.info)
         self.choose_loc_timer = Timer(
             f"{self.player} choose_loc_timer", text="Choose Locations: {:.2f}", logger=logger.info)
+        
         self.tile_iterator = defaultdict(dict)
         self.resource_iter = defaultdict(dict)
 
@@ -68,6 +76,7 @@ class ControlledAgent:
         })
 
     def _tile_iterator(self, center: CartesianPoint):
+        """Create a generator that cycles over surrounding neighbors."""
         def generator():
             point = {
                 0: center.top_neighbor,
@@ -86,14 +95,24 @@ class ControlledAgent:
         return generator()
 
     def _resource_iterator(self, points):
+        """Create a cycle generator on points."""
         return cycle(points)
 
-    def _update_plant_info(self, obs: Mapping):
-        """Update the oracle at each call of early_setup."""
-        # for each newly created factory:
+    def _update_plant_info(self, obs: CenteredObservation):
+        """Update the oracle at each call of act() method.
+
+        Side Effects:
+          - modifies 'robots_to_plants_quotas' entry of oracle attr.
+          - modifies resource_iter attr.
+
+        Args:
+          obs (CenteredObservation): current observation.        
+        """
+        # for each factory:
         for plant_id, props in obs.my_factories.items():
             fac_id = PlantId(plant_id, CartesianPoint(
                 *props['pos'], self.board_length))
+            
             # create its robot quotas
             if fac_id not in self.oracle['robots_to_plants_quotas']:
                 self.oracle['robots_to_plants_quotas'][fac_id] = {
@@ -101,6 +120,7 @@ class ControlledAgent:
                     LIGHT_TYPE: {'current': 0,
                                  'max': self.max_per_plant[LIGHT_TYPE]}
                 }
+
                 # create its tile and resource iterators
                 self.tile_iterator[fac_id] = self._tile_iterator(fac_id.pos)
                 ice_nghb = self.oracle['plant_resource_nghb'][fac_id.pos]['ice']
@@ -112,6 +132,7 @@ class ControlledAgent:
         # TODO: clean up dead plants and figure out what to do with assigned units
 
     def _update_rubble_map(self):
+        """Update 'rubble' entry of oracle attr."""
         old = self.oracle['rubble'].copy()
         new = self.oracle['obs'].rubble_map.copy()
         if logger.isEnabledFor(logging.DEBUG):
@@ -120,7 +141,23 @@ class ControlledAgent:
         self.oracle['rubble'] = new
 
     def update_oracle(self, obs: CenteredObservation):
-        """Update oracle at each call of act method."""
+        """Update oracle at each call of act method.
+        
+        Side Effects:
+          - modifies 'dobs' entry of oracle attr
+          - modifies 'obs' entry of oracle attr
+          - modifies 'planned_actions' entry of oracle attr.
+          - calls _update_plant_info method:
+            - modifies 'robots_to_plants_quotas' entry of oracle attr.
+            - modifies resource_iter attr.
+          - calls _update_rubble_map method:
+            - modifies 'rubble' entry of oracle attr.
+          - calls assign_and_count_robots method:
+            - modifies 'robot_assignments_to_plants' entry of oracle attr.
+            - modifies 'robot_to_resource' entry of oracle attr.
+            - calls increment_robot_load method: 
+                - modifies 'robots_to_plants_quotas' entry of oracle attr.
+        """
         self._update_plant_info(obs)
         self.oracle['dobs'] = obs.dict_obj
         self.oracle['obs'] = obs
@@ -130,7 +167,6 @@ class ControlledAgent:
         fac_ids = self.oracle['obs'].factory_ids
 
         # review assignment of units to plants
-        # TODO: think of how to manage actual target tiles for robots beyond plant centers
         old_assignment = self.oracle['robot_assignments_to_plants'].copy()
         # just a pointer
         new_assignment = self.oracle['robot_assignments_to_plants']
@@ -146,14 +182,15 @@ class ControlledAgent:
             if rid not in new_assignment:
                 # check if robot was just created, in which case assign to mother plant
                 # for now I check this by equating robot pos to plant pos
-                # note that in theory, if robot was created, factory plant was not met last turn
+                # note that in theory, if robot was created, factory plant quota was not met last turn
                 for plant in fac_ids:
                     if plant.pos == robot.pos:
                         tile = PlantAssignment(
                             plant.unit_id, plant.pos, next(self.tile_iterator[plant]))
                         self.assign_and_count_robots(rid, tile, 1)
                         break
-
+                if rid in new_assignment:
+                    continue
                 # otherwise assign to closest "not full" factory for now
                 forbidden = []
                 for fac_id in fac_ids:
@@ -172,13 +209,15 @@ class ControlledAgent:
                     break
 
                 # if all factories full, issue warning and assign to closest full one
-                if rid not in new_assignment:
-                    for fac_info in [f for f in close_to_far if f['fac'] in forbidden]:
-                        fac = fac_info['fac']
-                        tile = PlantAssignment(
-                            fac.unit_id, fac.pos, next(self.tile_iterator[fac]))
-                        self.assign_and_count_robots(rid, tile, 1)
-                        break
+                if rid in new_assignment:
+                    continue
+
+                for fac_info in [f for f in close_to_far if f['fac'] in forbidden]:
+                    fac = fac_info['fac']
+                    tile = PlantAssignment(
+                        fac.unit_id, fac.pos, next(self.tile_iterator[fac]))
+                    self.assign_and_count_robots(rid, tile, 1)
+                    break
 
     def _bernoulli(self, p):
         return self._rng.random() < p
@@ -186,6 +225,12 @@ class ControlledAgent:
     def assign_and_count_robots(self, robotid: RobotId, plant: PlantAssignment, increment: int) -> None:
         """Bookkeeping of oracle regarding robot assignment to plant and resource type.
 
+        Side Effects:
+          - modifies 'robot_assignments_to_plants' entry of oracle attr.
+          - modifies 'robot_to_resource' entry of oracle attr.
+          - calls increment_robot_load method: 
+               - modifies 'robots_to_plants_quotas' entry of oracle attr.
+          
         Args:
             robotid (RobotId): robot to be assigned or removed
             plant (PlantAssignment): plant receiving the robot assignment (or removal) instruction
@@ -194,12 +239,13 @@ class ControlledAgent:
         Raises:
             ValueError: If increment is neither 1 or -1.
         """
-        # update the robots to plants assignment dict
-        # and the robots to resource type assignment dict
         assgn = self.oracle['robot_assignments_to_plants']
         resource_assgn = self.oracle['robot_to_resource']
         if increment == 1:
+            # assign robot to plant
             assgn[robotid] = plant
+
+            # assign resource type to robot
             # TODO: better logic below?
             resource_assgn[robotid] = 'ice' if self._bernoulli(.7) else 'ore'
         elif increment == -1:
@@ -220,6 +266,16 @@ class ControlledAgent:
             robot_id: RobotId,
             by_value: int = 1
     ) -> None:
+        """Updates the counts stored in oracle attr.
+
+        Side Effects:
+          - modifies 'robots_to_plants_quotas' entry of oracle attr.
+
+        Args:
+            fac (Union[PlantAssignment, PlantId]): Factory, the record of which to modify.
+            robot_id (RobotId): Robot, the type of which is being tracked.
+            by_value (int, optional): Count delta to apply. Defaults to 1.
+        """
         facid = PlantId(fac.unit_id, fac.pos)
         self.oracle['robots_to_plants_quotas'][facid][robot_id.type]['current'] += by_value
 
@@ -286,6 +342,7 @@ class ControlledAgent:
                 except StopIteration:
                     # this is not going well
                     # TODO: let's make this robot a Kamikaze?
+                    logger.warning(f"robot {robot.myself} doesn't know what to do.")
                     pass
                 else:
                     actions[robot.unit_id] = enacter.dig_cycle(
