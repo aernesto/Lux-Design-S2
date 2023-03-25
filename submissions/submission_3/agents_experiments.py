@@ -29,6 +29,7 @@ class ControlledAgent:
         env_cfg: EnvConfig,
         enable_monitoring: bool = False,
         spawn_method: str = 'gmm',
+        max_sample: int = None,
         **kwargs
     ) -> None:
         self.spawn_method = spawn_method
@@ -36,6 +37,7 @@ class ControlledAgent:
         self.opp_player = "player_1" if self.player == "player_0" else "player_0"
         self.env_cfg: EnvConfig = env_cfg
         self.board_length: int = self.env_cfg.map_size
+        self.max_sample = max_sample
         self.max_allowed_factories: int = None  # set in early_setup method
         self.planner: MapPlanner = None  # set in early_setup
         self.map_spawner = None  # set in early_setup
@@ -318,14 +320,16 @@ class ControlledAgent:
                         self.map_spawner = ConnCompMapSpawner(
                             obs_,
                             self.planner,
+                            gen=self._rng,
                             threshold=self.options['threshold'],
-                            rad=self.options['radius']
+                            rad=self.options['radius'],
                         )
                     elif self.spawn_method == 'gmm':
                         self.map_spawner = GmmMapSpawner(
                             obs_,
                             self.planner,
-                            rad=self.options['radius']
+                            rad=self.options['radius'],
+                            gen=self._rng
                         )
                     else:
                         raise ValueError("unknown spawn_method")
@@ -346,7 +350,7 @@ class ControlledAgent:
             # TODO: add logic to control metal and water allocation
             if factories_to_place > 0 and my_turn_to_place:
                 with self.choose_loc_timer:
-                    spawn_loc, ice, ore = self.map_spawner.choose_spawn_loc()
+                    spawn_loc, ice, ore = self.map_spawner.choose_spawn_loc(self.max_sample)
 
                 center = CartesianPoint(*spawn_loc)
                 odict = self.oracle['plant_resource_nghb']
@@ -581,8 +585,8 @@ if __name__ == "__main__":
     env = LuxAI_S2()
     # obs = env.reset(seed=seed)
     agent0 = ControlledAgent('player_0', env.env_cfg,
-                             spawn_method='conn', radius=130, threshold=15)
+                             spawn_method='conn', radius=130, threshold=15, max_sample=10)
     agent1 = ControlledAgent('player_1', env.env_cfg,
-                             spawn_method='conn', threshold=15, radius=130)
+                             spawn_method='conn', threshold=15, radius=130, max_sample=20)
     interact(env, {'player_0': agent0, 'player_1': agent1},
              num_steps, seed=seed)
