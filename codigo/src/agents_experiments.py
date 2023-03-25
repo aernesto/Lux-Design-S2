@@ -191,6 +191,7 @@ class ControlledAgent:
                         break
                 if rid in new_assignment:
                     continue
+
                 # otherwise assign to closest "not full" factory for now
                 forbidden = []
                 for fac_id in fac_ids:
@@ -279,26 +280,38 @@ class ControlledAgent:
         facid = PlantId(fac.unit_id, fac.pos)
         self.oracle['robots_to_plants_quotas'][facid][robot_id.type]['current'] += by_value
 
-    def factory_actions(self, step):
+    def factory_actions(self, step: int) -> Dict:
+        """Build factory actions dict.
+
+        Side Effects:
+          - modifies 'planned_actions' entry of oracle attr.
+
+        Args:
+            step (int): current step in game.
+
+        Returns:
+            Dict: updated actions dict
+        """
         # decide how many heavy robots to build
         # current logic is to build 8 heavy robots per factory
         obs = self.oracle['obs']
         actions = self.oracle['planned_actions']
 
-        # total_heavy_quota = obs.num_factories * 8
-        # existing_heavies = len(obs.my_heavy_units)
-        # num_heavy_to_build = total_heavy_quota - existing_heavies
-
         for fac in obs.generate_factory_obs():
             plant_enacter = PlantEnacter(fac, self.env_cfg)
+            metal_need = self.oracle['heavy_price']['metal'] - fac.metal
+            power_need = self.oracle['heavy_price']['power'] - fac.power 
             if self.unmet_robot_quota(fac.myself, HEAVY_TYPE):
-                enough_metal = fac.metal >= self.oracle['heavy_price']['metal']
-                enough_power = fac.power >= self.oracle['heavy_price']['power']
+                enough_metal = metal_need <= 0
+                enough_power = power_need <= 0
                 if enough_metal and enough_power:
                     # TODO: add logic to avoid spawning if robot present on center tile
                     actions[fac.unit_id] = plant_enacter.build_heavy()
-            # TODO: deal with light robots
+                else:
+                    logger.info(f'{fac.myself} lacks {metal_need} metal and {power_need} power for heavy build.')
+                    #TODO: send some kind of need signal to oracle?
 
+            # TODO: deal with light robots
             if fac.unit_id not in actions:
                 # TODO: better estimate cost of watering
                 if (fac.water > 800) or (step > 800):
