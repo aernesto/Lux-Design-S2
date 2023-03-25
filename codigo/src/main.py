@@ -29,8 +29,9 @@ def agent_fn(observation, configurations):
         agent_dict[player] = ControlledAgent(player,
                                              env_cfg,
                                              spawn_method='conn',
-                                             radius=200,
-                                             threshold=10)
+                                             radius=1000,
+                                             threshold=15,
+                                             max_sample=10)
         agent_prev_obs[player] = dict()
     agent = agent_dict[player]
     obs = process_obs(player, agent_prev_obs[player], step,
