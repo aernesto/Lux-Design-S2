@@ -50,10 +50,11 @@ class MapSpawner:
         5: 4  # a priori never used
     }
 
-    def __init__(self, obs: CenteredObservation, planner: MapPlanner, rad: float):
+    def __init__(self, obs: CenteredObservation, planner: MapPlanner, rad: float, gen: np.random.Generator):
         self.obs = obs
         self.planner = planner
         self.rad = rad
+        self.gen = gen
 
     @property
     def board_length(self):
@@ -66,8 +67,12 @@ class MapSpawner:
     ) -> Tuple[Array, Dict]:
         raise NotImplementedError()
 
-    def _get_potential_spawns(self):
+    def _get_potential_spawns(self, max_sample: int = None):
         x, y = np.where(self.obs.board["valid_spawns_mask"] == 1)
+        if max_sample:
+            ix = self.gen.choice(a=len(x), size=max_sample, replace=False)
+            x = x[ix]
+            y = y[ix]
         inner_list = list(zip(x, y, [self.board_length] * len(x)))
         potential_spawns = [CartesianPoint(*x_) for x_ in inner_list]
         return x, y, potential_spawns
@@ -77,8 +82,8 @@ class MapSpawner:
 
 
 class GmmMapSpawner(MapSpawner):
-    def __init__(self, obs: CenteredObservation, planner: MapPlanner, rad: float):
-        super().__init__(obs, planner, rad)
+    def __init__(self, obs: CenteredObservation, planner: MapPlanner, rad: float, gen: np.random.Generator):
+        super().__init__(obs, planner, rad, gen)
         self.total_factories = self.obs.my_team['factories_to_place']
         self.orig_density = self.train_three_gmms(self.obs,
                                                   rubble_coef=1,
@@ -151,10 +156,10 @@ class GmmMapSpawner(MapSpawner):
 
         return _d
 
-    def choose_spawn_loc(self):
+    def choose_spawn_loc(self, max_sample: int = None):
         # TODO: include logic to avoid spawning too much in same area
         # TODO: the 'factories_to_place' below currently changes at each call
-        x, y, potential_spawns = self._get_potential_spawns()
+        x, y, potential_spawns = self._get_potential_spawns(max_sample=max_sample)
         # lower score is better
         scores, info = self.score(potential_spawns, list(zip(x, y)))
 
@@ -185,9 +190,10 @@ class ConnCompMapSpawner(MapSpawner):
     def __init__(self,
                  obs: CenteredObservation,
                  planner: MapPlanner,
+                 gen: np.random.Generator,
                  threshold: float = 0,
                  rad: float = 30):
-        super().__init__(obs, planner, rad)
+        super().__init__(obs, planner, rad, gen)
         self.total_factories = self.obs.my_team['factories_to_place']
         self.thr = threshold
         self.min_self_distance = 400
@@ -199,8 +205,8 @@ class ConnCompMapSpawner(MapSpawner):
     def rubble(self):
         return self.planner.rubble
 
-    def choose_spawn_loc(self):
-        x, y, potential_spawns = self._get_potential_spawns()
+    def choose_spawn_loc(self, max_sample: int = None):
+        x, y, potential_spawns = self._get_potential_spawns(max_sample=max_sample)
         num_factories = len(self.obs.my_factories)
         min_lichen = self.min_lichen_tiles[num_factories]
         scores, info = self.score(potential_spawns, min_lichen)
