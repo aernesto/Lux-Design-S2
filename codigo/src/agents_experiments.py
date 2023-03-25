@@ -221,7 +221,7 @@ class ControlledAgent:
         facid = PlantId(fac.unit_id, fac.pos)
         self.oracle['robots_to_plants_quotas'][facid][robot_id.type]['current'] += by_value
 
-    def factory_actions(self):
+    def factory_actions(self, step):
         # decide how many heavy robots to build
         # current logic is to build 8 heavy robots per factory
         obs = self.oracle['obs']
@@ -243,7 +243,7 @@ class ControlledAgent:
 
             if fac.unit_id not in actions:
                 # TODO: better estimate cost of watering
-                if fac.water > 1000:
+                if (fac.water > 800) or (step > 800):
                     actions[fac.unit_id] = plant_enacter.water()
         return actions
 
@@ -371,7 +371,7 @@ class ControlledAgent:
         observation = CenteredObservation(dobs, self.player)
         self.update_oracle(observation)
         # breakpoint()
-        self.factory_actions()  # will update self.oracle['planned_actions']
+        self.factory_actions(step)  # will update self.oracle['planned_actions']
         # breakpoint()
         self.robot_actions()  # will update self.oracle['planned_actions']
         # breakpoint()
